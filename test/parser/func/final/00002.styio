@@ -1,7 +1,7 @@
 // RUN: /root/styio/styio %s | /usr/bin/FileCheck %s
 
-# addi: i32 := () => {
-  => 1 + 2
+# addi: f64 := () => {
+  => 1 + 0.2 + 0.3
 }
 
 /*
