@@ -44,14 +44,14 @@ jobs:
           mkdir -p fuzz-artifacts/lexer fuzz-artifacts/parser
           set +e
           ASAN_OPTIONS=detect_container_overflow=0 ./build/bin/styio_fuzz_lexer \
-            tests/fuzz/corpus/lexer \
+            styio/tests/fuzz/corpus/lexer \
             -max_total_time=600 \
             -artifact_prefix=fuzz-artifacts/lexer/ \
             > fuzz-artifacts/lexer.log 2>&1
           LEX_EXIT=$?
 
           ASAN_OPTIONS=detect_container_overflow=0 ./build/bin/styio_fuzz_parser \
-            tests/fuzz/corpus/parser \
+            styio/tests/fuzz/corpus/parser \
             -max_total_time=600 \
             -artifact_prefix=fuzz-artifacts/parser/ \
             > fuzz-artifacts/parser.log 2>&1
@@ -66,7 +66,7 @@ jobs:
       - name: Build regression case pack
         if: always()
         run: |
-          ./scripts/fuzz-regression-pack.sh \
+          ./styio/scripts/fuzz-regression-pack.sh \
             --artifacts-root ./fuzz-artifacts \
             --out-dir ./fuzz-regressions \
             --run-id "gh-${{ github.run_id }}-${{ github.run_attempt }}"

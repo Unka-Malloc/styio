@@ -10,8 +10,8 @@ enable_testing()
 
 add_test(
   NAME docs_audit
-  COMMAND python3 "${CMAKE_SOURCE_DIR}/scripts/docs-audit.py"
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMAND python3 "${STYIO_SOURCE_DIR}/scripts/docs-audit.py"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(docs_audit PROPERTIES LABELS "docs")
 
@@ -33,7 +33,7 @@ function(styio_stdout_golden_test MS_DIR TEST_GLOB LABEL)
     add_test(
       NAME "${MS_DIR}_${_NAME}"
       COMMAND bash -c "\"${STYIO_EXE}\" --file \"${_F}\" | cmp -s - \"${_EXP}\""
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
     )
     set_tests_properties("${MS_DIR}_${_NAME}" PROPERTIES LABELS "milestone;${LABEL}")
   endforeach()
@@ -61,14 +61,14 @@ styio_stdout_golden_test(m9 "t12_*.styio" m9)
 add_test(
   NAME m9_t09_stderr_string
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m9/t09_stderr_string.styio\" 2>&1 >/dev/null | cmp -s - \"${STYIO_MS}/m9/expected/t09_stderr_string.err\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m9_t09_stderr_string PROPERTIES LABELS "milestone;m9")
 
 add_test(
   NAME m9_t10_stderr_int
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m9/t10_stderr_int.styio\" 2>&1 >/dev/null | cmp -s - \"${STYIO_MS}/m9/expected/t10_stderr_int.err\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m9_t10_stderr_int PROPERTIES LABELS "milestone;m9")
 
@@ -76,7 +76,7 @@ set_tests_properties(m9_t10_stderr_int PROPERTIES LABELS "milestone;m9")
 add_test(
   NAME m9_t11_mixed
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m9/t11_mixed.styio\" 2>\"${CMAKE_BINARY_DIR}/m9_t11_stderr.tmp\" | cmp -s - \"${STYIO_MS}/m9/expected/t11_mixed.out\" && cmp -s \"${CMAKE_BINARY_DIR}/m9_t11_stderr.tmp\" \"${STYIO_MS}/m9/expected/t11_mixed.err\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m9_t11_mixed PROPERTIES LABELS "milestone;m9")
 
@@ -84,42 +84,42 @@ set_tests_properties(m9_t11_mixed PROPERTIES LABELS "milestone;m9")
 add_test(
   NAME m10_t01_stdin_echo
   COMMAND bash -c "cat \"${STYIO_MS}/m10/data/echo_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t01_stdin_echo.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t01_stdin_echo.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m10_t01_stdin_echo PROPERTIES LABELS "milestone;m10")
 
 add_test(
   NAME m10_t02_stdin_pull
   COMMAND bash -c "cat \"${STYIO_MS}/m10/data/pull_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t02_stdin_pull.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t02_stdin_pull.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m10_t02_stdin_pull PROPERTIES LABELS "milestone;m10")
 
 add_test(
   NAME m10_t03_stdin_eof
   COMMAND bash -c "cat \"${STYIO_MS}/m10/data/empty_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t03_stdin_eof.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t03_stdin_eof.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m10_t03_stdin_eof PROPERTIES LABELS "milestone;m10")
 
 add_test(
   NAME m10_t04_stdin_multi_pull
   COMMAND bash -c "cat \"${STYIO_MS}/m10/data/multi_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t04_stdin_multi_pull.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t04_stdin_multi_pull.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m10_t04_stdin_multi_pull PROPERTIES LABELS "milestone;m10")
 
 add_test(
   NAME m10_t05_stdin_transform
   COMMAND bash -c "cat \"${STYIO_MS}/m10/data/transform_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t05_stdin_transform.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t05_stdin_transform.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m10_t05_stdin_transform PROPERTIES LABELS "milestone;m10")
 
 add_test(
   NAME m10_t06_stdin_mixed_output
   COMMAND bash -c "cat \"${STYIO_MS}/m10/data/mixed_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t06_stdin_mixed_output.styio\" 2>\"${CMAKE_BINARY_DIR}/m10_t06_stderr.tmp\" | cmp -s - \"${STYIO_MS}/m10/expected/t06_stdin_mixed_output.out\" && cmp -s \"${CMAKE_BINARY_DIR}/m10_t06_stderr.tmp\" \"${STYIO_MS}/m10/expected/t06_stdin_mixed_output.err\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m10_t06_stdin_mixed_output PROPERTIES LABELS "milestone;m10")
 
@@ -131,7 +131,7 @@ foreach(_F IN LISTS M10_FAIL_TESTS)
   add_test(
     NAME "m10_err_${_ENAME}"
     COMMAND bash -c "if \"${STYIO_EXE}\" --file \"${_F}\"; then exit 1; else exit 0; fi"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
   )
   set_tests_properties("m10_err_${_ENAME}" PROPERTIES LABELS "milestone;m10;m10_semantic")
 endforeach()
@@ -144,7 +144,7 @@ foreach(_F IN LISTS M8_FAIL_TESTS)
   add_test(
     NAME "m8_err_${_ENAME}"
     COMMAND bash -c "if \"${STYIO_EXE}\" --file \"${_F}\"; then exit 1; else exit 0; fi"
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
   )
   set_tests_properties("m8_err_${_ENAME}" PROPERTIES LABELS "milestone;m8;m8_semantic")
 endforeach()
@@ -153,49 +153,49 @@ endforeach()
 add_test(
   NAME m5_t01_read_file
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t01_read_file.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t01_read_file.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m5_t01_read_file PROPERTIES LABELS "milestone;m5")
 
 add_test(
   NAME m5_t02_write_file
   COMMAND bash -c "rm -f /tmp/styio_out.txt && \"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t02_write_file.styio\" && test \"$(cat /tmp/styio_out.txt)\" = \"Hello from Styio\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m5_t02_write_file PROPERTIES LABELS "milestone;m5")
 
 add_test(
   NAME m5_t04_raii
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t04_raii.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t04_raii.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m5_t04_raii PROPERTIES LABELS "milestone;m5")
 
 add_test(
   NAME m5_t05_auto_detect
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t05_auto_detect.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t05_auto_detect.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m5_t05_auto_detect PROPERTIES LABELS "milestone;m5")
 
 add_test(
   NAME m5_t06_fail_fast
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t06_fail_fast.styio\"; test \$? -ne 0"
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m5_t06_fail_fast PROPERTIES LABELS "milestone;m5")
 
 add_test(
   NAME m5_t07_redirect
   COMMAND bash -c "rm -f /tmp/styio_val.txt && \"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t07_redirect.styio\" && test \"$(cat /tmp/styio_val.txt)\" = \"42\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m5_t07_redirect PROPERTIES LABELS "milestone;m5")
 
 add_test(
   NAME m5_t08_pipe_func
   COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t08_pipe_func.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t08_pipe_func.out\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(m5_t08_pipe_func PROPERTIES LABELS "milestone;m5")
 
@@ -208,13 +208,13 @@ foreach(M7FILE IN LISTS M7_STYIO_TESTS)
     add_test(
       NAME "m7_${M7NAME}"
       COMMAND bash -c "rm -f /tmp/styio_doubled.txt && \"${STYIO_EXE}\" --file \"${M7FILE}\" && cmp -s /tmp/styio_doubled.txt \"${STYIO_MS}/m7/expected/${M7NAME}.out\""
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
     )
   else()
     add_test(
       NAME "m7_${M7NAME}"
       COMMAND bash -c "\"${STYIO_EXE}\" --file \"${M7FILE}\" | cmp -s - \"${STYIO_MS}/m7/expected/${M7NAME}.out\""
-      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
     )
   endif()
   set_tests_properties("m7_${M7NAME}" PROPERTIES LABELS "milestone;m7")
@@ -222,8 +222,8 @@ endforeach()
 
 add_test(
   NAME parser_shadow_gate_m1_zero_fallback_and_internal_bridges
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${CMAKE_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m1\" \"\$tmp_dir\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m1\" \"\$tmp_dir\""
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(parser_shadow_gate_m1_zero_fallback_and_internal_bridges PROPERTIES
   LABELS "styio_pipeline;shadow_gate;m1"
@@ -231,8 +231,8 @@ set_tests_properties(parser_shadow_gate_m1_zero_fallback_and_internal_bridges PR
 
 add_test(
   NAME parser_shadow_gate_m2_zero_fallback_and_internal_bridges
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${CMAKE_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m2\" \"\$tmp_dir\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m2\" \"\$tmp_dir\""
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(parser_shadow_gate_m2_zero_fallback_and_internal_bridges PROPERTIES
   LABELS "styio_pipeline;shadow_gate;m2"
@@ -240,8 +240,8 @@ set_tests_properties(parser_shadow_gate_m2_zero_fallback_and_internal_bridges PR
 
 add_test(
   NAME parser_shadow_gate_m5_dual_zero_expected_nonzero
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${CMAKE_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m5\" \"\$tmp_dir\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m5\" \"\$tmp_dir\""
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(parser_shadow_gate_m5_dual_zero_expected_nonzero PROPERTIES
   LABELS "styio_pipeline;shadow_gate;m5"
@@ -249,8 +249,8 @@ set_tests_properties(parser_shadow_gate_m5_dual_zero_expected_nonzero PROPERTIES
 
 add_test(
   NAME parser_shadow_gate_m7_zero_fallback
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${CMAKE_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback \"${STYIO_EXE}\" \"${STYIO_MS}/m7\" \"\$tmp_dir\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback \"${STYIO_EXE}\" \"${STYIO_MS}/m7\" \"\$tmp_dir\""
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(parser_shadow_gate_m7_zero_fallback PROPERTIES
   LABELS "styio_pipeline;shadow_gate;m7"
@@ -258,8 +258,8 @@ set_tests_properties(parser_shadow_gate_m7_zero_fallback PROPERTIES
 
 add_test(
   NAME parser_shadow_gate_m7_zero_internal_bridges
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${CMAKE_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m7\" \"\$tmp_dir\""
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m7\" \"\$tmp_dir\""
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(parser_shadow_gate_m7_zero_internal_bridges PROPERTIES
   LABELS "styio_pipeline;shadow_gate;m7"
@@ -267,8 +267,8 @@ set_tests_properties(parser_shadow_gate_m7_zero_internal_bridges PROPERTIES
 
 add_test(
   NAME parser_legacy_entry_audit
-  COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/parser-legacy-entry-audit.sh"
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMAND bash "${STYIO_SOURCE_DIR}/scripts/parser-legacy-entry-audit.sh"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(parser_legacy_entry_audit PROPERTIES
   LABELS "styio_pipeline;workflow"
@@ -283,7 +283,7 @@ target_link_libraries(
   GTest::gtest_main
 )
 target_compile_definitions(styio_test PRIVATE
-  "STYIO_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\""
+  "STYIO_SOURCE_DIR=\"${STYIO_SOURCE_DIR}\""
   "STYIO_COMPILER_EXE=\"$<TARGET_FILE:styio>\""
 )
 add_dependencies(styio_test styio)
@@ -304,7 +304,7 @@ target_compile_definitions(styio_security_test PRIVATE ${LLVM_DEFINITIONS_LIST})
 
 add_executable(styio_ide_test
   ide/styio_ide_test.cpp
-  "${CMAKE_SOURCE_DIR}/src/StyioLSP/Server.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLSP/Server.cpp"
 )
 target_link_libraries(styio_ide_test PRIVATE styio_ide_core GTest::gtest_main ${LLVM_LIBS})
 target_include_directories(styio_ide_test SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
@@ -315,17 +315,17 @@ endif()
 
 include(GoogleTest)
 gtest_discover_tests(styio_test
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
   PROPERTIES LABELS "styio_pipeline\\;unit"
 )
 
 gtest_discover_tests(styio_security_test
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
   PROPERTIES LABELS "security\\;safety\\;lexer\\;ffi"
 )
 
 gtest_discover_tests(styio_ide_test
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
   PROPERTIES LABELS "ide\\;lsp\\;unit"
 )
 

@@ -5,12 +5,12 @@
       "type": "lldb",
       "request": "launch",
       "name": "lldb launch",
-      "program": "${workspaceFolder}/styio",
+      "program": "${workspaceFolder}/build/bin/styio",
       "args": [
-        "-a",
-        "/home/Styio/tests/parsing/forward/00000009.styio"
+        "--file",
+        "${workspaceFolder}/styio/tests/milestones/m1/t01_int_arith.styio"
       ],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}/styio"
     }
   ]
 }

@@ -50,7 +50,7 @@ add_test(
     $<TARGET_FILE:styio_fuzz_lexer>
     ${CMAKE_CURRENT_LIST_DIR}/corpus/lexer
     500
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(
   fuzz_lexer_smoke
@@ -65,7 +65,7 @@ add_test(
     $<TARGET_FILE:styio_fuzz_parser>
     ${CMAKE_CURRENT_LIST_DIR}/corpus/parser
     500
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(
   fuzz_parser_smoke
@@ -76,7 +76,7 @@ set_tests_properties(
 add_test(
   NAME fuzz_regression_pack_smoke
   COMMAND bash ${CMAKE_CURRENT_LIST_DIR}/fuzz_regression_pack_smoke.sh
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(
   fuzz_regression_pack_smoke
