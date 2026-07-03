@@ -34,7 +34,7 @@
 - `styio-dev-doc`
 - `styio-dev-env`
 - `styio-book`
-- `styio-view`
+- `vityo-nightly`
 - `styio-examples`
 - `styio-ext-vsc`
 
@@ -207,15 +207,15 @@ Phase 1：
 Phase 2：
 
 - 一版可连续阅读的白皮书草稿。
-- 与 `styio-view` 的展示内容保持基础一致。
+- 与 `vityo-nightly` 的 Vityo IDE 产品说明保持基础一致。
 
-### 5.5 `styio-view`
+### 5.5 `vityo-nightly`
 
-目标：提供对外展示和可视化承载，不与主仓库争夺技术权威。
+目标：提供 Vityo IDE、编辑器壳层和运行视窗承载，不与主仓库争夺技术权威。
 
 Phase 0：
 
-- `README.md` 说明它是官网/展示页/可视化入口中的哪一种。
+- `README.md` 说明它是 Vityo IDE 与运行视窗入口。
 - 说明数据和描述是否来自主仓库生成或手工维护。
 
 Phase 1：
@@ -312,14 +312,14 @@ Phase 2：
 3. `styio-examples`
 4. `styio-ext-vsc`
 5. `styio-spio`
-6. `styio-view`
+6. `vityo-nightly`
 7. `styio-book`
 
 原因：
 
 - 前四者最直接影响开发者上手和生态可感知度。
 - `styio-spio` 很重要，但如果语言与示例都没稳定，包管理器设计容易空转。
-- `styio-view` 和 `styio-book` 偏展示与叙事，可以晚于开发基础设施启动。
+- `vityo-nightly` 和 `styio-book` 偏产品体验与叙事，可以晚于开发基础设施启动。
 
 ---
 

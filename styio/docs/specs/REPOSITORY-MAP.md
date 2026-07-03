@@ -48,7 +48,7 @@ Styio 当前采用“主仓库 + 配件仓库”的生态结构：
 | [`styio-dev-doc`](https://github.com/eBioRing/styio-dev-doc) | 开发者文档仓库 | 跨仓库开发手册、搭建流程、协作说明、外部开发者上手指南 | 语言权威语义、编译器测试验收、产品白皮书 |
 | [`styio-dev-env`](https://github.com/eBioRing/styio-dev-env) | 标准开发环境 | devcontainer、toolchain bootstrap、统一环境脚本、CI/本地环境约定 | 语言设计、产品定义、示例工程内容 |
 | [`styio-book`](https://github.com/eBioRing/styio-book) | 产品白皮书 | 产品愿景、定位、理念叙事、对外说明材料 | 编译器行为细节、测试接受标准、工程实现规范 |
-| [`styio-view`](https://github.com/eBioRing/styio-view) | 可视化页面 | 项目展示页、可视化控制台、交互式说明与演示界面 | 编译器主实现、语言 SSOT、包管理规则 |
+| [`vityo-nightly`](https://github.com/Unka-Malloc/vityo-nightly) | Vityo IDE 与运行视窗 | 编辑器壳层、运行视窗、可视化控制台、面向人的工作区与交互 | 编译器主实现、语言 SSOT、包管理规则 |
 | [`styio-examples`](https://github.com/eBioRing/styio-examples) | 示例工程集合 | 可运行样例、模板项目、最佳实践示例 | 语言规范正文、编译器验收标准 |
 | [`styio-ext-vsc`](https://github.com/eBioRing/styio-ext-vsc) | VS Code 插件 | 语法高亮、片段、编辑器交互、未来可能的语言服务集成 | 语言语义权威定义、编译器主行为 |
 
