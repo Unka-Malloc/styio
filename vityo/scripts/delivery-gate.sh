@@ -87,8 +87,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 REPO_CMD=(python3 scripts/repo-hygiene-gate.py)
-DOCS_GATE_CMD=(./scripts/docs-gate.sh)
-HEALTH_CMD=(./scripts/checkpoint-health.sh)
+DOCS_GATE_CMD=(bash scripts/docs-gate.sh)
+HEALTH_CMD=(bash scripts/checkpoint-health.sh)
 
 case "$MODE" in
   checkpoint)
