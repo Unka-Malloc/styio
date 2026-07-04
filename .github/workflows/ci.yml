@@ -40,7 +40,7 @@ jobs:
           GITHUB_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          python3 scripts/workflow-scheduler.py run --profile ci-prebuild
+          python3 scripts/workflow-scheduler.py run --profile ci-prebuild --skip-tool team-docs-base
 
       - name: Install dependencies
         run: |
@@ -140,6 +140,9 @@ jobs:
             llvm=18.1.8
             llvmdev=18.1.8
             clang-tools=18.1.8
+            zlib
+            libxml2
+            zstd
 
       - name: Locate LLVM 18
         shell: pwsh
@@ -225,6 +228,9 @@ jobs:
             llvm=18.1.8
             llvmdev=18.1.8
             clang-tools=18.1.8
+            zlib
+            libxml2
+            zstd
 
       - name: Locate LLVM 18
         shell: bash

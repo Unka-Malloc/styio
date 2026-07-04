@@ -119,7 +119,7 @@ jobs:
           STYIO: ${{ github.workspace }}/build/default/bin/styio
           VITYO_STYIO_ALL_IN_ONE_ROOT: ${{ github.workspace }}
         run: >
-          ./scripts/delivery-gate.sh
+          bash scripts/delivery-gate.sh
           --mode push
           --base "${{ steps.ci_refs.outputs.base_ref }}"
           --range "${{ steps.ci_refs.outputs.range }}"

@@ -1,0 +1,7 @@
+# Relative paths explicitly allowed to bypass root repository hygiene checks.
+# The all-in-one tree tracks imported fuzz corpora and platform launcher icons.
+
+glob:styio/tests/fuzz/corpus/*
+glob:styio/tests/fuzz/corpus/*/*
+glob:vityo/frontend/vityo_app/**/*.png
+glob:vityo/frontend/vityo_app/**/*.ico

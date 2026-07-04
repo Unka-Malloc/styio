@@ -29,7 +29,10 @@ styio/benchmark/reports/*
 !styio/benchmark/reports/README.md
 
 # Visual Studio Code cache
-# .vscode/
+.vscode/
+.cursor/
+.idea/
+.clangd/
 
 # Local scratch / editor metadata
 .kilo/
@@ -50,6 +53,7 @@ cmake_install.cmake
 
 # Python / Node / Flutter workspace caches
 **/__pycache__/
+__pycache__/
 .venv/
 venv/
 .pytest_cache/
@@ -62,6 +66,8 @@ node_modules/
 **/.gradle/
 **/coverage/
 **/dist/
+tmp/
+docs/audit/defects/
 
 # Profiling / sanitizer / fuzz leftovers
 *.profraw
@@ -83,6 +89,14 @@ node_modules/
 !docs/**/tmp/**
 !docs/**/*.tmp
 !docs/**/*.log
+!tests/**/build/
+!tests/**/build/**
+!tests/**/build-*/
+!tests/**/build-*/**
+!tests/**/tmp/
+!tests/**/tmp/**
+!tests/**/*.tmp
+!tests/**/*.log
 !styio/tests/**/build/
 !styio/tests/**/build/**
 !styio/tests/**/build-*/
