@@ -884,7 +884,7 @@ complete resource definitions and usage patterns.
 @stdin >> #(line) => { >_(line) }     // >_ used as stream source under the hood
 ```
 
-**Type formatting rules** (applies to `>_()`, scalar `-> @stdout`, and iterable `>> @stdout` after serialization):
+**Type formatting rules** (applies to `>_()`, scalar `-> @stdout`, and each item emitted by iterable `>> @stdout`):
 
 | Type | Output format |
 |------|---------------|

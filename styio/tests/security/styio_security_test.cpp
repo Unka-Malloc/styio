@@ -8101,7 +8101,15 @@ TEST(StyioSecurityNightlyCodegen, LongStandaloneContinueNormalizesToNearestLoop)
   EXPECT_NO_THROW({
     const std::string llvm_ir =
       compile_program_to_llvm_ir_engine_latest(src, StyioParserEngine::Nightly);
-    EXPECT_NE(llvm_ir.find("br label %foreach_step"), std::string::npos) << llvm_ir;
+    std::size_t branch_pos = llvm_ir.find("br label %foreach_step");
+    if (branch_pos == std::string::npos) {
+      branch_pos = llvm_ir.find("br label %foreach_rt_step");
+    }
+    if (branch_pos == std::string::npos) {
+      branch_pos = llvm_ir.find("br label %rangefor_step");
+    }
+    EXPECT_NE(branch_pos, std::string::npos) << llvm_ir;
+    EXPECT_EQ(llvm_ir.find("skipped"), std::string::npos) << llvm_ir;
   });
 }
 
