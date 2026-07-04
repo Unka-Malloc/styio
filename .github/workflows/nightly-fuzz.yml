@@ -29,7 +29,7 @@ jobs:
 
       - name: Configure
         run: >
-          cmake -S . -B build -G Ninja
+          cmake -S styio -B build -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_C_COMPILER=clang-18
           -DCMAKE_CXX_COMPILER=clang++-18

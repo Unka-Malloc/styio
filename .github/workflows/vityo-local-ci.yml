@@ -81,7 +81,7 @@ jobs:
 
       - name: Build Styio language fixture parser
         run: |
-          cmake -S . -B build/default -G Ninja \
+          cmake -S styio -B build/default -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER=clang-18 \
             -DCMAKE_CXX_COMPILER=clang++-18 \
