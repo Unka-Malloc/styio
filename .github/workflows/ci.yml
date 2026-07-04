@@ -195,12 +195,12 @@ jobs:
           cmake --build build/windows --target
           styio styio_lspd styio_test
 
-      - name: Syntax-check contract tests
+      - name: Windows pipeline contract tests
         shell: pwsh
         run: >
-          .\build\windows\bin\styio_test.exe
-          --gtest_filter=StyioDiagnostics.SyntaxCheckRejectsNonAuthoritativeParserEngine
-          --gtest_brief=1
+          ctest --test-dir build/windows
+          -R "styio_test_windows_five_layer_pipeline"
+          --output-on-failure
 
   styio-macos-native:
     runs-on: macos-latest
