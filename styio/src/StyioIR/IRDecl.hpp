@@ -5,9 +5,10 @@
 /* Styio IR Base */
 class StyioIR;
 
-/* General IRs */
+/* SG = Styio General. Default/general IR nodes. */
 class SGResId;
 class SGType;
+class SGNoOp;
 
 class SGConstBool;
 
@@ -33,28 +34,15 @@ class SGDynLoad;
 class SGFuncArg;
 class SGFunc;
 class SGCall;
+class SGExportDecl;
+class SGExternBlock;
 
 class SGReturn;
 
 class SGLoop;
 class SGForEach;
-class SGListLiteral;
-class SGDictLiteral;
 class SGRangeFor;
 class SGIf;
-class SGListReadStdin;
-class SGListClone;
-class SGListLen;
-class SGListGet;
-class SGListSet;
-class SGListToString;
-class SGDictClone;
-class SGDictLen;
-class SGDictGet;
-class SGDictSet;
-class SGDictKeys;
-class SGDictValues;
-class SGDictToString;
 
 class SGStateSnapLoad;
 class SGStateHistLoad;
@@ -71,16 +59,48 @@ class SGWaveDispatch;
 class SGGuardSelect;
 class SGEqProbe;
 
-class SGHandleAcquire;
-class SGFileLineIter;
-class SGStreamZip;
 class SGSnapshotDecl;
 class SGSnapshotShadowLoad;
-class SGInstantPull;
-class SGResourceWriteToFile;
+
+/* SIO = Styio Input/Output. Files, standard streams, stdin/stdout/stderr,
+   future network, and filesystem IO nodes. */
+class SIOHandleAcquire;
+class SIOHandleRelease;
+class SIOFileLineIter;
+class SIOStreamZip;
+class SIOInstantPull;
+class SIOListReadStdin;
+class SIOResourceWriteToFile;
 class SIOStdStreamWrite;
+class SIOResourceEffect;
 class SIOStdStreamLineIter;
 class SIOStdStreamPull;
+class SIOTaskCreate;
+class SIOFlowBind;
+
+/* SC = Styio Collection. List, dictionary, and future data structures
+   such as matrix. */
+class SCListLiteral;
+class SCDictLiteral;
+class SCMatrixLiteral;
+class SCListClone;
+class SCMatrixClone;
+class SCListLen;
+class SCListGet;
+class SCListSlice;
+class SCListSet;
+class SCListToString;
+class SCMatrixGet;
+class SCMatrixRow;
+class SCMatrixRowsSlice;
+class SCMatrixToString;
+class SCDictClone;
+class SCDictLen;
+class SCDictGet;
+class SCDictSet;
+class SCDictKeys;
+class SCDictValues;
+class SCDictToString;
 
 // class SGIfElse;
 // class SGForLoop;
@@ -90,7 +110,7 @@ class SGBlock;
 class SGEntry;
 class SGMainEntry;
 
-/* IOIR */
+/* IO IR (merged into GenIR/SIOIR.hpp 2026-05-22) */
 class SIOPath;
 class SIOPrint;
 class SIORead;

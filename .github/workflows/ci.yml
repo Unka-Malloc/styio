@@ -1,22 +1,46 @@
-name: styio-ci
+name: styio-all-in-one-ci
 
 on:
   pull_request:
   push:
     branches:
+      - ai-dev
+      - nightly
+      - stable
       - main
       - master
-      - stable
-      - nightly
+      - agent-dev
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+  styio-ci-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.5"
+
+      - name: Run workflow scheduler prebuild chain
+        shell: bash
+        working-directory: styio
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 scripts/workflow-scheduler.py run --profile ci-prebuild
 
       - name: Install dependencies
         run: |
@@ -25,6 +49,7 @@ jobs:
             cmake \
             ninja-build \
             clang-18 \
+            libclang-rt-18-dev \
             lld-18 \
             llvm-18-dev \
             libicu-dev \
@@ -32,7 +57,7 @@ jobs:
 
       - name: Configure
         run: >
-          cmake -S . -B build -G Ninja
+          cmake -S . -B build/ci -G Ninja
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_C_COMPILER=clang-18
           -DCMAKE_CXX_COMPILER=clang++-18
@@ -41,28 +66,29 @@ jobs:
 
       - name: Build
         run: >
-          cmake --build build --target
-          styio styio_test styio_security_test styio_soak_test
-          styio_fuzz_lexer styio_fuzz_parser
+          cmake --build build/ci --target
+          styio styio_test styio_algorithm_equivalence_test
+          styio_security_test styio_resource_topology_test styio_ide_test
+          styio_fuzz_suite
 
       - name: Docs audit
-        run: ctest --test-dir build -L docs --output-on-failure
+        run: ctest --test-dir build/ci -L docs --output-on-failure
 
       - name: Security tests
-        run: ctest --test-dir build -L security --output-on-failure
+        run: ctest --test-dir build/ci -L security --output-on-failure
 
       - name: Five-layer pipeline tests
-        run: ctest --test-dir build -L styio_pipeline --output-on-failure
+        run: ctest --test-dir build/ci -L styio_pipeline --output-on-failure
 
-      - name: Parser shadow gate (M1 full suite + artifacts)
+      - name: Parser shadow gate (scalar expressions suite + artifacts)
         run: |
-          mkdir -p build/parser-shadow-artifacts
-          ./styio/benchmark/parser-shadow-suite-gate.sh ./build/bin/styio ./styio/tests/milestones/m1 ./build/parser-shadow-artifacts
+          mkdir -p build/ci/parser-shadow-artifacts
+          ./styio/benchmark/parser-shadow-suite-gate.sh ./build/ci/bin/styio ./styio/tests/features/scalar_expressions ./build/ci/parser-shadow-artifacts
 
-      - name: Parser shadow gate (M2 full suite + artifacts)
+      - name: Parser shadow gate (functions suite + artifacts)
         run: |
-          mkdir -p build/parser-shadow-artifacts-m2
-          ./styio/benchmark/parser-shadow-suite-gate.sh ./build/bin/styio ./styio/tests/milestones/m2 ./build/parser-shadow-artifacts-m2
+          mkdir -p build/ci/parser-shadow-artifacts-m2
+          ./styio/benchmark/parser-shadow-suite-gate.sh ./build/ci/bin/styio ./styio/tests/features/functions ./build/ci/parser-shadow-artifacts-m2
 
       - name: Upload parser shadow artifacts
         if: failure()
@@ -70,15 +96,187 @@ jobs:
         with:
           name: parser-shadow-artifacts
           path: |
-            build/parser-shadow-artifacts
-            build/parser-shadow-artifacts-m2
+            build/ci/parser-shadow-artifacts
+            build/ci/parser-shadow-artifacts-m2
           if-no-files-found: ignore
 
       - name: Soak smoke tests
-        run: ctest --test-dir build -L soak_smoke --output-on-failure
+        run: ctest --test-dir build/ci -L soak_smoke --output-on-failure
 
-      - name: Milestone smoke
-        run: ctest --test-dir build -R '^m1_t01_int_arith$|^m2_t01_simple_func$' --output-on-failure
+      - name: Language feature smoke
+        run: ctest --test-dir build/ci -R '^scalar_expressions_t01_int_arith$|^functions_t01_simple_func$' --output-on-failure
 
       - name: Fuzz smoke
-        run: ctest --test-dir build -L fuzz_smoke --output-on-failure
+        run: ctest --test-dir build/ci -L fuzz_smoke --output-on-failure
+
+  styio-windows-native:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.5"
+
+      - name: Set up MSVC command environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install CMake, Ninja, and LLVM 18 development package
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: styio-llvm18
+          cache-environment: true
+          create-args: >-
+            cmake
+            ninja
+            llvm=18.1.8
+            llvmdev=18.1.8
+            clang-tools=18.1.8
+
+      - name: Locate LLVM 18
+        shell: pwsh
+        run: |
+          $condaPrefix = Join-Path $env:MAMBA_ROOT_PREFIX "envs\styio-llvm18"
+          if (!(Test-Path $condaPrefix) -and $env:CONDA_PREFIX) {
+            $condaPrefix = $env:CONDA_PREFIX
+          }
+          if (!(Test-Path $condaPrefix)) {
+            throw "micromamba environment was not found"
+          }
+
+          $llvmRoot = Join-Path $condaPrefix "Library"
+          $llvmConfig = Join-Path $llvmRoot "lib\cmake\llvm\LLVMConfig.cmake"
+          if (!(Test-Path $llvmConfig)) {
+            throw "LLVMConfig.cmake was not found in $llvmRoot"
+          }
+
+          $llvmDir = Split-Path -Parent $llvmConfig
+
+          Add-Content $env:GITHUB_PATH (Join-Path $llvmRoot "bin")
+          Add-Content $env:GITHUB_PATH (Join-Path $condaPrefix "Scripts")
+          Add-Content $env:GITHUB_ENV "LLVM_DIR=$llvmDir"
+          Add-Content $env:GITHUB_ENV "STYIO_NATIVE_TOOLCHAIN_ROOT=$llvmRoot"
+
+      - name: Tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          ninja --version
+          python --version
+          where.exe cl
+          clang --version
+
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build/windows -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=cl
+          -DCMAKE_CXX_COMPILER=cl
+          -DLLVM_DIR="$env:LLVM_DIR"
+          -DSTYIO_NATIVE_TOOLCHAIN_ROOT="$env:STYIO_NATIVE_TOOLCHAIN_ROOT"
+          -DSTYIO_NATIVE_TOOLCHAIN_MODE=auto
+          -DSTYIO_ENABLE_FUZZ=OFF
+
+      - name: Build native compiler and IDE contract targets
+        shell: pwsh
+        run: >
+          cmake --build build/windows --target
+          styio styio_lspd styio_syntax_check_internal_test
+
+      - name: Syntax-check contract tests
+        shell: pwsh
+        run: >
+          ctest --test-dir build/windows
+          -R "StyioSyntaxCheckInternal"
+          --output-on-failure
+
+  styio-macos-native:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13.5"
+
+      - name: Install CMake, Ninja, and LLVM 18 development package
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: styio-llvm18
+          cache-environment: true
+          create-args: >-
+            cmake
+            ninja
+            llvm=18.1.8
+            llvmdev=18.1.8
+            clang-tools=18.1.8
+
+      - name: Locate LLVM 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          mamba_root="${MAMBA_ROOT_PREFIX:-${HOME}/micromamba}"
+          conda_prefix="${CONDA_PREFIX:-${mamba_root}/envs/styio-llvm18}"
+          if [[ ! -d "${conda_prefix}" ]]; then
+            echo "micromamba environment was not found at ${conda_prefix}" >&2
+            exit 1
+          fi
+
+          llvm_config="${conda_prefix}/lib/cmake/llvm/LLVMConfig.cmake"
+          if [[ ! -f "${llvm_config}" ]]; then
+            echo "LLVMConfig.cmake was not found in ${conda_prefix}" >&2
+            exit 1
+          fi
+
+          llvm_dir="$(dirname "${llvm_config}")"
+          echo "${conda_prefix}/bin" >> "${GITHUB_PATH}"
+          echo "LLVM_DIR=${llvm_dir}" >> "${GITHUB_ENV}"
+          echo "STYIO_NATIVE_TOOLCHAIN_ROOT=${conda_prefix}" >> "${GITHUB_ENV}"
+
+      - name: Tool versions
+        shell: bash
+        run: |
+          cmake --version
+          ninja --version
+          python3 --version
+          clang --version
+
+      - name: Configure
+        shell: bash
+        run: >
+          cmake -S . -B build/macos -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DLLVM_DIR="${LLVM_DIR}"
+          -DSTYIO_NATIVE_TOOLCHAIN_ROOT="${STYIO_NATIVE_TOOLCHAIN_ROOT}"
+          -DSTYIO_NATIVE_TOOLCHAIN_MODE=auto
+          -DSTYIO_ENABLE_FUZZ=OFF
+
+      - name: Build native compiler and IDE contract targets
+        shell: bash
+        run: >
+          cmake --build build/macos --target
+          styio styio_lspd styio_syntax_check_internal_test
+
+      - name: Syntax-check contract tests
+        shell: bash
+        run: >
+          ctest --test-dir build/macos
+          -R "StyioSyntaxCheckInternal"
+          --output-on-failure

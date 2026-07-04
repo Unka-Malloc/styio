@@ -1,273 +1,531 @@
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
-  DOWNLOAD_EXTRACT_TIMESTAMP true
-)
-FetchContent_MakeAvailable(googletest)
+include(GoogleTest)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-enable_testing()
+if(MSVC)
+  add_compile_options(
+    "$<$<COMPILE_LANGUAGE:C>:/utf-8>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/utf-8>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/bigobj>"
+  )
+  target_compile_definitions(styio_core PUBLIC STYIO_CODEGEN_INTERNAL_ACCESS=public)
+endif()
+target_compile_definitions(styio_ide_core PUBLIC STYIO_IDE_INTERNAL_ACCESS=public)
+
+set(STYIO_TEST_RUNNER "${CMAKE_CURRENT_LIST_DIR}/run_styio_case.py")
+set(STYIO_SHADOW_GATE_RUNNER "${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.py")
+
+if(WIN32)
+  # Several long-lived parser/runtime fixture strings intentionally contain
+  # Unix-style /tmp paths because those literals are part of the golden contract.
+  # Windows treats /tmp as a root-relative path on the current drive, so create
+  # that directory for tests that exercise those fixtures through the runtime.
+  file(MAKE_DIRECTORY "/tmp")
+endif()
 
 add_test(
   NAME docs_audit
-  COMMAND python3 "${STYIO_SOURCE_DIR}/scripts/docs-audit.py"
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SOURCE_DIR}/scripts/docs-audit.py"
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(docs_audit PROPERTIES LABELS "docs")
 
-# All milestone .styio sources live under tests/milestones/{m1,m2,...}
-set(STYIO_MS "${CMAKE_CURRENT_LIST_DIR}/milestones")
+add_test(
+  NAME stdlib_manifest_gate
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SOURCE_DIR}/scripts/stdlib-manifest-gate.py"
+          --repo-root "${STYIO_SOURCE_DIR}"
+          --manifest "${STYIO_SOURCE_DIR}/library/manifest.json"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(stdlib_manifest_gate PROPERTIES LABELS "docs;stdlib;workflow")
+
+add_test(
+  NAME runtime_surface_gate
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SOURCE_DIR}/scripts/runtime-surface-gate.py"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(runtime_surface_gate PROPERTIES LABELS "security;safety;runtime_surface;unit")
+
+add_test(
+  NAME architecture_layer_gate
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SOURCE_DIR}/scripts/architecture-layer-gate.py"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(architecture_layer_gate PROPERTIES LABELS "architecture;workflow;unit")
+
+add_test(
+  NAME bootstrap_dev_env_dependency_scope
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          bootstrap-scope
+          --repo-root "${STYIO_SOURCE_DIR}"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(bootstrap_dev_env_dependency_scope PROPERTIES LABELS "docs;workflow")
+
+# Language feature .styio sources live under tests/features/<feature>.
+set(STYIO_FEATURES "${CMAKE_CURRENT_LIST_DIR}/features")
 set(STYIO_EXE "$<TARGET_FILE:styio>")
 
+function(styio_add_stdout_golden_test TEST_NAME SOURCE_PATH EXPECTED_PATH LABELS_VALUE)
+  add_test(
+    NAME "${TEST_NAME}"
+    COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+            run
+            --styio "${STYIO_EXE}"
+            --source "${SOURCE_PATH}"
+            --cwd "${STYIO_SOURCE_DIR}"
+            --expect-stdout "${EXPECTED_PATH}"
+            ${ARGN}
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  )
+  set_tests_properties("${TEST_NAME}" PROPERTIES LABELS "${LABELS_VALUE}")
+endfunction()
+
+function(styio_add_stderr_golden_test TEST_NAME SOURCE_PATH EXPECTED_PATH LABELS_VALUE)
+  add_test(
+    NAME "${TEST_NAME}"
+    COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+            run
+            --styio "${STYIO_EXE}"
+            --source "${SOURCE_PATH}"
+            --cwd "${STYIO_SOURCE_DIR}"
+            --discard-stdout
+            --expect-stderr "${EXPECTED_PATH}"
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  )
+  set_tests_properties("${TEST_NAME}" PROPERTIES LABELS "${LABELS_VALUE}")
+endfunction()
+
+add_test(
+  NAME readme_glimpse_job_parallel_signal
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_SOURCE_DIR}/example/job_parallel_signal.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --stdin-text "101\n94\n"
+          --expect-stdout "${STYIO_SOURCE_DIR}/example/expected/job_parallel_signal.out"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(readme_glimpse_job_parallel_signal PROPERTIES LABELS "docs;example;styio_pipeline")
+
+add_test(
+  NAME example_hello_world
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_SOURCE_DIR}/example/hello_world.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --expect-stdout "${STYIO_SOURCE_DIR}/example/expected/hello_world.out"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(example_hello_world PROPERTIES LABELS "example;styio_pipeline")
+
+add_test(
+  NAME example_bubble_sort
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_SOURCE_DIR}/example/algorithms/bubble_sort.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --stdin-text "[3, 1, 2]\n"
+          --expect-stdout "${STYIO_SOURCE_DIR}/example/expected/bubble_sort.out"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(example_bubble_sort PROPERTIES LABELS "example;styio_pipeline;algorithm_equivalence")
+
+add_test(
+  NAME example_eight_queens
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_SOURCE_DIR}/example/algorithms/eight_queens.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --expect-stdout "${STYIO_SOURCE_DIR}/example/expected/eight_queens.out"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(example_eight_queens PROPERTIES LABELS "example;styio_pipeline;algorithm_equivalence")
+
+add_test(
+  NAME example_cli_calculator
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          calc
+          --styio "${STYIO_EXE}"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --expression "1 + 2 * (3 + 4)"
+          --expect-stdout "${STYIO_SOURCE_DIR}/example/expected/cli_calculator.out"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(example_cli_calculator PROPERTIES LABELS "example;styio_pipeline")
+
+add_test(
+  NAME styio_profiler_frontend_smoke
+  COMMAND "${CMAKE_COMMAND}"
+          "-DSTYIO_BIN=${STYIO_EXE}"
+          "-DSTYIO_SOURCE=${STYIO_FEATURES}/task_resources/t04_task_capture_i64.styio"
+          "-DSTYIO_PROFILE_OUT=${STYIO_BINARY_DIR}/profiler/styio-profiler-smoke.json"
+          -P "${CMAKE_CURRENT_LIST_DIR}/cmake/styio_profiler_smoke.cmake"
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+)
+set_tests_properties(styio_profiler_frontend_smoke PROPERTIES
+  LABELS "styio_pipeline;profiler;unit"
+)
+
 # --- Helper: stdout golden (styio --file X | cmp -s - expected/X.out) ---
-function(styio_stdout_golden_test MS_DIR TEST_GLOB LABEL)
-  file(GLOB _STYIO_FILES CONFIGURE_DEPENDS "${STYIO_MS}/${MS_DIR}/${TEST_GLOB}")
+function(styio_feature_stdout_golden_test FEATURE TEST_GLOB LABEL)
+  file(GLOB _STYIO_FILES CONFIGURE_DEPENDS "${STYIO_FEATURES}/${FEATURE}/${TEST_GLOB}")
   list(SORT _STYIO_FILES)
   foreach(_F IN LISTS _STYIO_FILES)
     get_filename_component(_NAME ${_F} NAME_WE)
-    set(_EXP "${STYIO_MS}/${MS_DIR}/expected/${_NAME}.out")
+    set(_EXP "${STYIO_FEATURES}/${FEATURE}/expected/${_NAME}.out")
     if(NOT EXISTS "${_EXP}")
-      message(WARNING "Missing golden: ${_EXP} (skip ${_NAME})")
-      continue()
+      message(FATAL_ERROR "Missing golden: ${_EXP} (required by ${_NAME})")
     endif()
-    add_test(
-      NAME "${MS_DIR}_${_NAME}"
-      COMMAND bash -c "\"${STYIO_EXE}\" --file \"${_F}\" | cmp -s - \"${_EXP}\""
-      WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+    styio_add_stdout_golden_test(
+      "${LABEL}_${_NAME}"
+      "${_F}"
+      "${_EXP}"
+      "language_feature;${LABEL}"
     )
-    set_tests_properties("${MS_DIR}_${_NAME}" PROPERTIES LABELS "milestone;${LABEL}")
   endforeach()
 endfunction()
 
-styio_stdout_golden_test(m1 "t*.styio" m1)
-styio_stdout_golden_test(m2 "t*.styio" m2)
-styio_stdout_golden_test(m3 "t*.styio" m3)
-styio_stdout_golden_test(m4 "t*.styio" m4)
-styio_stdout_golden_test(m6 "t*.styio" m6)
-styio_stdout_golden_test(m8 "t*.styio" m8)
-
-# --- M9: stdout golden tests (t01-t08, t12 via golden helper; stderr/mixed tests individually) ---
-styio_stdout_golden_test(m9 "t01_*.styio" m9)
-styio_stdout_golden_test(m9 "t02_*.styio" m9)
-styio_stdout_golden_test(m9 "t03_*.styio" m9)
-styio_stdout_golden_test(m9 "t04_*.styio" m9)
-styio_stdout_golden_test(m9 "t05_*.styio" m9)
-styio_stdout_golden_test(m9 "t06_*.styio" m9)
-styio_stdout_golden_test(m9 "t07_*.styio" m9)
-styio_stdout_golden_test(m9 "t08_*.styio" m9)
-styio_stdout_golden_test(m9 "t12_*.styio" m9)
-
-# M9 stderr tests: capture stderr and compare against .err golden
-add_test(
-  NAME m9_t09_stderr_string
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m9/t09_stderr_string.styio\" 2>&1 >/dev/null | cmp -s - \"${STYIO_MS}/m9/expected/t09_stderr_string.err\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m9_t09_stderr_string PROPERTIES LABELS "milestone;m9")
-
-add_test(
-  NAME m9_t10_stderr_int
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m9/t10_stderr_int.styio\" 2>&1 >/dev/null | cmp -s - \"${STYIO_MS}/m9/expected/t10_stderr_int.err\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m9_t10_stderr_int PROPERTIES LABELS "milestone;m9")
-
-# M9 mixed stdout+stderr test: verify both streams separately
-add_test(
-  NAME m9_t11_mixed
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m9/t11_mixed.styio\" 2>\"${CMAKE_BINARY_DIR}/m9_t11_stderr.tmp\" | cmp -s - \"${STYIO_MS}/m9/expected/t11_mixed.out\" && cmp -s \"${CMAKE_BINARY_DIR}/m9_t11_stderr.tmp\" \"${STYIO_MS}/m9/expected/t11_mixed.err\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m9_t11_mixed PROPERTIES LABELS "milestone;m9")
-
-# --- M10: stdin tests (piped input) ---
-add_test(
-  NAME m10_t01_stdin_echo
-  COMMAND bash -c "cat \"${STYIO_MS}/m10/data/echo_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t01_stdin_echo.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t01_stdin_echo.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m10_t01_stdin_echo PROPERTIES LABELS "milestone;m10")
-
-add_test(
-  NAME m10_t02_stdin_pull
-  COMMAND bash -c "cat \"${STYIO_MS}/m10/data/pull_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t02_stdin_pull.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t02_stdin_pull.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m10_t02_stdin_pull PROPERTIES LABELS "milestone;m10")
-
-add_test(
-  NAME m10_t03_stdin_eof
-  COMMAND bash -c "cat \"${STYIO_MS}/m10/data/empty_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t03_stdin_eof.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t03_stdin_eof.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m10_t03_stdin_eof PROPERTIES LABELS "milestone;m10")
-
-add_test(
-  NAME m10_t04_stdin_multi_pull
-  COMMAND bash -c "cat \"${STYIO_MS}/m10/data/multi_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t04_stdin_multi_pull.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t04_stdin_multi_pull.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m10_t04_stdin_multi_pull PROPERTIES LABELS "milestone;m10")
-
-add_test(
-  NAME m10_t05_stdin_transform
-  COMMAND bash -c "cat \"${STYIO_MS}/m10/data/transform_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t05_stdin_transform.styio\" | cmp -s - \"${STYIO_MS}/m10/expected/t05_stdin_transform.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m10_t05_stdin_transform PROPERTIES LABELS "milestone;m10")
-
-add_test(
-  NAME m10_t06_stdin_mixed_output
-  COMMAND bash -c "cat \"${STYIO_MS}/m10/data/mixed_input.txt\" | \"${STYIO_EXE}\" --file \"${STYIO_MS}/m10/t06_stdin_mixed_output.styio\" 2>\"${CMAKE_BINARY_DIR}/m10_t06_stderr.tmp\" | cmp -s - \"${STYIO_MS}/m10/expected/t06_stdin_mixed_output.out\" && cmp -s \"${CMAKE_BINARY_DIR}/m10_t06_stderr.tmp\" \"${STYIO_MS}/m10/expected/t06_stdin_mixed_output.err\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m10_t06_stdin_mixed_output PROPERTIES LABELS "milestone;m10")
-
-# M10 semantic failures: compilation must abort (e*.styio)
-file(GLOB M10_FAIL_TESTS CONFIGURE_DEPENDS "${STYIO_MS}/m10/e*.styio")
-list(SORT M10_FAIL_TESTS)
-foreach(_F IN LISTS M10_FAIL_TESTS)
-  get_filename_component(_ENAME ${_F} NAME_WE)
-  add_test(
-    NAME "m10_err_${_ENAME}"
-    COMMAND bash -c "if \"${STYIO_EXE}\" --file \"${_F}\"; then exit 1; else exit 0; fi"
-    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-  )
-  set_tests_properties("m10_err_${_ENAME}" PROPERTIES LABELS "milestone;m10;m10_semantic")
-endforeach()
-
-# M8 semantic failures: compilation must abort (e*.styio)
-file(GLOB M8_FAIL_TESTS CONFIGURE_DEPENDS "${STYIO_MS}/m8/e*.styio")
-list(SORT M8_FAIL_TESTS)
-foreach(_F IN LISTS M8_FAIL_TESTS)
-  get_filename_component(_ENAME ${_F} NAME_WE)
-  add_test(
-    NAME "m8_err_${_ENAME}"
-    COMMAND bash -c "if \"${STYIO_EXE}\" --file \"${_F}\"; then exit 1; else exit 0; fi"
-    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-  )
-  set_tests_properties("m8_err_${_ENAME}" PROPERTIES LABELS "milestone;m8;m8_semantic")
-endforeach()
-
-# --- M5: stdout goldens + special file / exit-code cases ---
-add_test(
-  NAME m5_t01_read_file
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t01_read_file.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t01_read_file.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m5_t01_read_file PROPERTIES LABELS "milestone;m5")
-
-add_test(
-  NAME m5_t02_write_file
-  COMMAND bash -c "rm -f /tmp/styio_out.txt && \"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t02_write_file.styio\" && test \"$(cat /tmp/styio_out.txt)\" = \"Hello from Styio\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m5_t02_write_file PROPERTIES LABELS "milestone;m5")
-
-add_test(
-  NAME m5_t04_raii
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t04_raii.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t04_raii.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m5_t04_raii PROPERTIES LABELS "milestone;m5")
-
-add_test(
-  NAME m5_t05_auto_detect
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t05_auto_detect.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t05_auto_detect.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m5_t05_auto_detect PROPERTIES LABELS "milestone;m5")
-
-add_test(
-  NAME m5_t06_fail_fast
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t06_fail_fast.styio\"; test \$? -ne 0"
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m5_t06_fail_fast PROPERTIES LABELS "milestone;m5")
-
-add_test(
-  NAME m5_t07_redirect
-  COMMAND bash -c "rm -f /tmp/styio_val.txt && \"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t07_redirect.styio\" && test \"$(cat /tmp/styio_val.txt)\" = \"42\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m5_t07_redirect PROPERTIES LABELS "milestone;m5")
-
-add_test(
-  NAME m5_t08_pipe_func
-  COMMAND bash -c "\"${STYIO_EXE}\" --file \"${STYIO_MS}/m5/t08_pipe_func.styio\" | cmp -s - \"${STYIO_MS}/m5/expected/t08_pipe_func.out\""
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-)
-set_tests_properties(m5_t08_pipe_func PROPERTIES LABELS "milestone;m5")
-
-# --- M7: stdout or artifact golden ---
-file(GLOB M7_STYIO_TESTS CONFIGURE_DEPENDS "${STYIO_MS}/m7/t*.styio")
-list(SORT M7_STYIO_TESTS)
-foreach(M7FILE IN LISTS M7_STYIO_TESTS)
-  get_filename_component(M7NAME ${M7FILE} NAME_WE)
-  if(M7NAME STREQUAL "t10_full_pipeline")
+function(styio_feature_stderr_failure_golden_test FEATURE LABEL)
+  file(GLOB _STYIO_FAIL_FILES CONFIGURE_DEPENDS "${STYIO_FEATURES}/${FEATURE}/e*.styio")
+  list(SORT _STYIO_FAIL_FILES)
+  foreach(_F IN LISTS _STYIO_FAIL_FILES)
+    get_filename_component(_ENAME ${_F} NAME_WE)
+    set(_EXP "${STYIO_FEATURES}/${FEATURE}/expected/${_ENAME}.err")
+    if(NOT EXISTS "${_EXP}")
+      message(FATAL_ERROR "Missing diagnostic golden: ${_EXP} (required by ${_ENAME})")
+    endif()
     add_test(
-      NAME "m7_${M7NAME}"
-      COMMAND bash -c "rm -f /tmp/styio_doubled.txt && \"${STYIO_EXE}\" --file \"${M7FILE}\" && cmp -s /tmp/styio_doubled.txt \"${STYIO_MS}/m7/expected/${M7NAME}.out\""
+      NAME "${LABEL}_err_${_ENAME}"
+      COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+              run
+              --styio "${STYIO_EXE}"
+              --source "${_F}"
+              --cwd "${STYIO_SOURCE_DIR}"
+              --expect-failure
+              --stderr-contains-file "${_EXP}"
       WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+    )
+    set_tests_properties("${LABEL}_err_${_ENAME}" PROPERTIES LABELS "language_feature;${LABEL};${LABEL}_semantic")
+  endforeach()
+endfunction()
+
+styio_feature_stdout_golden_test(scalar_expressions "t*.styio" scalar_expressions)
+styio_feature_stdout_golden_test(functions "t*.styio" functions)
+styio_feature_stdout_golden_test(control_flow "t*.styio" control_flow)
+styio_feature_stdout_golden_test(wave_dispatch "t*.styio" wave_dispatch)
+styio_feature_stderr_failure_golden_test(wave_dispatch wave_dispatch)
+styio_feature_stdout_golden_test(state_resources "t*.styio" state_resources)
+styio_feature_stdout_golden_test(final_bindings "t*.styio" final_bindings)
+styio_feature_stdout_golden_test(native_interop "t*.styio" native_interop)
+styio_feature_stdout_golden_test(task_resources "t*.styio" task_resources)
+
+# --- stdout/stderr resource tests ---
+styio_feature_stdout_golden_test(stdio_output "t01_*.styio" stdio_output)
+styio_feature_stdout_golden_test(stdio_output "t02_*.styio" stdio_output)
+styio_feature_stdout_golden_test(stdio_output "t03_*.styio" stdio_output)
+styio_feature_stdout_golden_test(stdio_output "t04_*.styio" stdio_output)
+styio_feature_stdout_golden_test(stdio_output "t05_*.styio" stdio_output)
+styio_feature_stdout_golden_test(stdio_output "t06_*.styio" stdio_output)
+styio_feature_stdout_golden_test(stdio_output "t08_*.styio" stdio_output)
+styio_feature_stdout_golden_test(stdio_output "t12_*.styio" stdio_output)
+
+# Stderr tests capture stderr and compare against .err golden.
+add_test(
+  NAME stdio_output_t09_stderr_string
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/stdio_output/t09_stderr_string.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --discard-stdout
+          --expect-stderr "${STYIO_FEATURES}/stdio_output/expected/t09_stderr_string.err"
+)
+set_tests_properties(stdio_output_t09_stderr_string PROPERTIES LABELS "language_feature;stdio_output")
+
+add_test(
+  NAME stdio_output_t10_stderr_int
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/stdio_output/t10_stderr_int.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --discard-stdout
+          --expect-stderr "${STYIO_FEATURES}/stdio_output/expected/t10_stderr_int.err"
+)
+set_tests_properties(stdio_output_t10_stderr_int PROPERTIES LABELS "language_feature;stdio_output")
+
+# Mixed stdout+stderr test verifies both streams separately.
+add_test(
+  NAME stdio_output_t11_mixed
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/stdio_output/t11_mixed.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --expect-stdout "${STYIO_FEATURES}/stdio_output/expected/t11_mixed.out"
+          --expect-stderr "${STYIO_FEATURES}/stdio_output/expected/t11_mixed.err"
+)
+set_tests_properties(stdio_output_t11_mixed PROPERTIES LABELS "language_feature;stdio_output")
+
+# --- stdin resource tests (piped input) ---
+add_test(
+  NAME stdio_input_t01_stdin_echo
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/stdio_input/t01_stdin_echo.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --stdin-file "${STYIO_FEATURES}/stdio_input/data/echo_input.txt"
+          --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t01_stdin_echo.out"
+)
+set_tests_properties(stdio_input_t01_stdin_echo PROPERTIES LABELS "language_feature;stdio_input")
+
+add_test(
+  NAME styio_build_native_executable_stdin_echo
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          build-run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/stdio_input/t01_stdin_echo.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --output "${STYIO_BINARY_DIR}/styio-native-stdin-echo${CMAKE_EXECUTABLE_SUFFIX}"
+          --stdin-file "${STYIO_FEATURES}/stdio_input/data/echo_input.txt"
+          --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t01_stdin_echo.out"
+          --profile-out "${STYIO_BINARY_DIR}/styio-native-stdin-echo.profile.json"
+          --profile-contains "\"tool\": \"styio-native-profiler\""
+          --profile-contains "\"name\": \"execute\""
+)
+set_tests_properties(styio_build_native_executable_stdin_echo PROPERTIES
+  LABELS "native_artifact;language_feature;stdio_input"
+)
+
+add_test(
+  NAME styio_build_native_executable_native_interop
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          build-run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/native_interop/t07_native_hybrid_inline_reference_artifact.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --output "${STYIO_BINARY_DIR}/styio-native-hybrid${CMAKE_EXECUTABLE_SUFFIX}"
+          --expect-stdout "${STYIO_FEATURES}/native_interop/expected/t07_native_hybrid_inline_reference_artifact.out"
+)
+set_tests_properties(styio_build_native_executable_native_interop PROPERTIES
+  LABELS "native_artifact;native_interop;language_feature"
+)
+
+add_test(
+  NAME stdio_input_t02_stdin_pull
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/stdio_input/t02_stdin_pull.styio" --cwd "${STYIO_SOURCE_DIR}" --stdin-file "${STYIO_FEATURES}/stdio_input/data/pull_input.txt" --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t02_stdin_pull.out"
+)
+set_tests_properties(stdio_input_t02_stdin_pull PROPERTIES LABELS "language_feature;stdio_input")
+
+add_test(
+  NAME stdio_input_t03_stdin_eof
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/stdio_input/t03_stdin_eof.styio" --cwd "${STYIO_SOURCE_DIR}" --stdin-file "${STYIO_FEATURES}/stdio_input/data/empty_input.txt" --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t03_stdin_eof.out"
+)
+set_tests_properties(stdio_input_t03_stdin_eof PROPERTIES LABELS "language_feature;stdio_input")
+
+add_test(
+  NAME stdio_input_t04_stdin_multi_pull
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/stdio_input/t04_stdin_multi_pull.styio" --cwd "${STYIO_SOURCE_DIR}" --stdin-file "${STYIO_FEATURES}/stdio_input/data/multi_input.txt" --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t04_stdin_multi_pull.out"
+)
+set_tests_properties(stdio_input_t04_stdin_multi_pull PROPERTIES LABELS "language_feature;stdio_input")
+
+add_test(
+  NAME stdio_input_t05_stdin_transform
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/stdio_input/t05_stdin_transform.styio" --cwd "${STYIO_SOURCE_DIR}" --stdin-file "${STYIO_FEATURES}/stdio_input/data/transform_input.txt" --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t05_stdin_transform.out"
+)
+set_tests_properties(stdio_input_t05_stdin_transform PROPERTIES LABELS "language_feature;stdio_input")
+
+add_test(
+  NAME stdio_input_t06_stdin_mixed_output
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/stdio_input/t06_stdin_mixed_output.styio" --cwd "${STYIO_SOURCE_DIR}" --stdin-file "${STYIO_FEATURES}/stdio_input/data/mixed_input.txt" --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t06_stdin_mixed_output.out" --expect-stderr "${STYIO_FEATURES}/stdio_input/expected/t06_stdin_mixed_output.err"
+)
+set_tests_properties(stdio_input_t06_stdin_mixed_output PROPERTIES LABELS "language_feature;stdio_input")
+
+add_test(
+  NAME stdio_input_t07_stdin_typed_tuple_pull
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/stdio_input/t07_stdin_typed_tuple_pull.styio" --cwd "${STYIO_SOURCE_DIR}" --stdin-file "${STYIO_FEATURES}/stdio_input/data/typed_tuple_input.txt" --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t07_stdin_typed_tuple_pull.out"
+)
+set_tests_properties(stdio_input_t07_stdin_typed_tuple_pull PROPERTIES LABELS "language_feature;stdio_input")
+
+add_test(
+  NAME stdio_input_t08_stdin_typed_f64_list_pull
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/stdio_input/t08_stdin_typed_f64_list_pull.styio" --cwd "${STYIO_SOURCE_DIR}" --stdin-file "${STYIO_FEATURES}/stdio_input/data/typed_f64_list_input.txt" --expect-stdout "${STYIO_FEATURES}/stdio_input/expected/t08_stdin_typed_f64_list_pull.out"
+)
+set_tests_properties(stdio_input_t08_stdin_typed_f64_list_pull PROPERTIES LABELS "language_feature;stdio_input")
+
+# Semantic failure tests must check the diagnostic contract, not only nonzero exit.
+styio_feature_stderr_failure_golden_test(stdio_input stdio_input)
+styio_feature_stderr_failure_golden_test(task_resources task_resources)
+styio_feature_stderr_failure_golden_test(state_resources state_resources)
+styio_feature_stderr_failure_golden_test(final_bindings final_bindings)
+
+# --- file resource stdout goldens + special file / exit-code cases ---
+add_test(
+  NAME file_resources_t01_read_file
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/file_resources/t01_read_file.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --expect-stdout "${STYIO_FEATURES}/file_resources/expected/t01_read_file.out"
+)
+set_tests_properties(file_resources_t01_read_file PROPERTIES LABELS "language_feature;file_resources")
+
+add_test(
+  NAME file_resources_t02_write_file
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/file_resources/t02_write_file.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --replace-literal "/tmp/styio_out.txt" "${STYIO_BINARY_DIR}/styio_out.txt"
+          --cleanup "${STYIO_BINARY_DIR}/styio_out.txt"
+          --expect-file-text "${STYIO_BINARY_DIR}/styio_out.txt" "Hello from Styio"
+)
+set_tests_properties(file_resources_t02_write_file PROPERTIES LABELS "language_feature;file_resources")
+
+add_test(
+  NAME file_resources_t04_raii
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/file_resources/t04_raii.styio" --cwd "${STYIO_SOURCE_DIR}" --expect-stdout "${STYIO_FEATURES}/file_resources/expected/t04_raii.out"
+)
+set_tests_properties(file_resources_t04_raii PROPERTIES LABELS "language_feature;file_resources")
+
+add_test(
+  NAME file_resources_t05_auto_detect
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/file_resources/t05_auto_detect.styio" --cwd "${STYIO_SOURCE_DIR}" --expect-stdout "${STYIO_FEATURES}/file_resources/expected/t05_auto_detect.out"
+)
+set_tests_properties(file_resources_t05_auto_detect PROPERTIES LABELS "language_feature;file_resources")
+
+add_test(
+  NAME file_resources_t06_fail_fast
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/file_resources/t06_fail_fast.styio" --cwd "${STYIO_SOURCE_DIR}" --expect-failure
+)
+set_tests_properties(file_resources_t06_fail_fast PROPERTIES LABELS "language_feature;file_resources")
+
+add_test(
+  NAME file_resources_t07_redirect
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+          run
+          --styio "${STYIO_EXE}"
+          --source "${STYIO_FEATURES}/file_resources/t07_redirect.styio"
+          --cwd "${STYIO_SOURCE_DIR}"
+          --replace-literal "/tmp/styio_val.txt" "${STYIO_BINARY_DIR}/styio_val.txt"
+          --cleanup "${STYIO_BINARY_DIR}/styio_val.txt"
+          --expect-file-text "${STYIO_BINARY_DIR}/styio_val.txt" "42"
+)
+set_tests_properties(file_resources_t07_redirect PROPERTIES LABELS "language_feature;file_resources")
+
+add_test(
+  NAME file_resources_t08_pipe_func
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}" run --styio "${STYIO_EXE}" --source "${STYIO_FEATURES}/file_resources/t08_pipe_func.styio" --cwd "${STYIO_SOURCE_DIR}" --expect-stdout "${STYIO_FEATURES}/file_resources/expected/t08_pipe_func.out"
+)
+set_tests_properties(file_resources_t08_pipe_func PROPERTIES LABELS "language_feature;file_resources")
+
+# --- stream processing: stdout or artifact golden ---
+file(GLOB STREAM_PROCESSING_STYIO_TESTS CONFIGURE_DEPENDS "${STYIO_FEATURES}/stream_processing/t*.styio")
+list(SORT STREAM_PROCESSING_STYIO_TESTS)
+foreach(STREAM_PROCESSING_FILE IN LISTS STREAM_PROCESSING_STYIO_TESTS)
+  get_filename_component(STREAM_PROCESSING_NAME ${STREAM_PROCESSING_FILE} NAME_WE)
+  if(STREAM_PROCESSING_NAME STREQUAL "t10_full_pipeline")
+    add_test(
+      NAME "stream_processing_${STREAM_PROCESSING_NAME}"
+      COMMAND "${Python3_EXECUTABLE}" "${STYIO_TEST_RUNNER}"
+              run
+              --styio "${STYIO_EXE}"
+              --source "${STREAM_PROCESSING_FILE}"
+              --cwd "${STYIO_SOURCE_DIR}"
+              --replace-literal "/tmp/styio_doubled.txt" "${STYIO_BINARY_DIR}/styio_doubled.txt"
+              --cleanup "${STYIO_BINARY_DIR}/styio_doubled.txt"
+              --expect-file-equals "${STYIO_BINARY_DIR}/styio_doubled.txt" "${STYIO_FEATURES}/stream_processing/expected/${STREAM_PROCESSING_NAME}.out"
     )
   else()
-    add_test(
-      NAME "m7_${M7NAME}"
-      COMMAND bash -c "\"${STYIO_EXE}\" --file \"${M7FILE}\" | cmp -s - \"${STYIO_MS}/m7/expected/${M7NAME}.out\""
-      WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+    styio_add_stdout_golden_test(
+      "stream_processing_${STREAM_PROCESSING_NAME}"
+      "${STREAM_PROCESSING_FILE}"
+      "${STYIO_FEATURES}/stream_processing/expected/${STREAM_PROCESSING_NAME}.out"
+      "language_feature;stream_processing"
     )
   endif()
-  set_tests_properties("m7_${M7NAME}" PROPERTIES LABELS "milestone;m7")
+  set_tests_properties("stream_processing_${STREAM_PROCESSING_NAME}" PROPERTIES LABELS "language_feature;stream_processing")
 endforeach()
 
 add_test(
-  NAME parser_shadow_gate_m1_zero_fallback_and_internal_bridges
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m1\" \"\$tmp_dir\""
+  NAME parser_shadow_gate_scalar_expressions_zero_fallback_and_internal_bridges
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SHADOW_GATE_RUNNER}"
+          --require-zero-fallback
+          --require-zero-internal-bridges
+          "${STYIO_EXE}"
+          "${STYIO_FEATURES}/scalar_expressions"
+          "${STYIO_BINARY_DIR}/parser-shadow/scalar_expressions"
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
-set_tests_properties(parser_shadow_gate_m1_zero_fallback_and_internal_bridges PROPERTIES
-  LABELS "styio_pipeline;shadow_gate;m1"
+set_tests_properties(parser_shadow_gate_scalar_expressions_zero_fallback_and_internal_bridges PROPERTIES
+  LABELS "styio_pipeline;shadow_gate;scalar_expressions"
 )
 
 add_test(
-  NAME parser_shadow_gate_m2_zero_fallback_and_internal_bridges
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m2\" \"\$tmp_dir\""
+  NAME parser_shadow_gate_functions_zero_fallback_and_internal_bridges
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SHADOW_GATE_RUNNER}"
+          --require-zero-fallback
+          --require-zero-internal-bridges
+          "${STYIO_EXE}"
+          "${STYIO_FEATURES}/functions"
+          "${STYIO_BINARY_DIR}/parser-shadow/functions"
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
-set_tests_properties(parser_shadow_gate_m2_zero_fallback_and_internal_bridges PROPERTIES
-  LABELS "styio_pipeline;shadow_gate;m2"
+set_tests_properties(parser_shadow_gate_functions_zero_fallback_and_internal_bridges PROPERTIES
+  LABELS "styio_pipeline;shadow_gate;functions"
 )
 
 add_test(
-  NAME parser_shadow_gate_m5_dual_zero_expected_nonzero
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m5\" \"\$tmp_dir\""
+  NAME parser_shadow_gate_file_resources_dual_zero_expected_nonzero
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SHADOW_GATE_RUNNER}"
+          --require-zero-fallback
+          --require-zero-internal-bridges
+          "${STYIO_EXE}"
+          "${STYIO_FEATURES}/file_resources"
+          "${STYIO_BINARY_DIR}/parser-shadow/file_resources"
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
-set_tests_properties(parser_shadow_gate_m5_dual_zero_expected_nonzero PROPERTIES
-  LABELS "styio_pipeline;shadow_gate;m5"
+set_tests_properties(parser_shadow_gate_file_resources_dual_zero_expected_nonzero PROPERTIES
+  LABELS "styio_pipeline;shadow_gate;file_resources"
 )
 
 add_test(
-  NAME parser_shadow_gate_m7_zero_fallback
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback \"${STYIO_EXE}\" \"${STYIO_MS}/m7\" \"\$tmp_dir\""
+  NAME parser_shadow_gate_stream_processing_zero_fallback
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SHADOW_GATE_RUNNER}"
+          --require-zero-fallback
+          "${STYIO_EXE}"
+          "${STYIO_FEATURES}/stream_processing"
+          "${STYIO_BINARY_DIR}/parser-shadow/stream_processing_zero_fallback"
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
-set_tests_properties(parser_shadow_gate_m7_zero_fallback PROPERTIES
-  LABELS "styio_pipeline;shadow_gate;m7"
+set_tests_properties(parser_shadow_gate_stream_processing_zero_fallback PROPERTIES
+  LABELS "styio_pipeline;shadow_gate;stream_processing"
 )
 
 add_test(
-  NAME parser_shadow_gate_m7_zero_internal_bridges
-  COMMAND bash -c "tmp_dir=\$(mktemp -d) && trap 'rm -rf \"\$tmp_dir\"' EXIT && \"${STYIO_SOURCE_DIR}/benchmark/parser-shadow-suite-gate.sh\" --require-zero-fallback --require-zero-internal-bridges \"${STYIO_EXE}\" \"${STYIO_MS}/m7\" \"\$tmp_dir\""
+  NAME parser_shadow_gate_stream_processing_zero_internal_bridges
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SHADOW_GATE_RUNNER}"
+          --require-zero-fallback
+          --require-zero-internal-bridges
+          "${STYIO_EXE}"
+          "${STYIO_FEATURES}/stream_processing"
+          "${STYIO_BINARY_DIR}/parser-shadow/stream_processing_zero_internal_bridges"
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
-set_tests_properties(parser_shadow_gate_m7_zero_internal_bridges PROPERTIES
-  LABELS "styio_pipeline;shadow_gate;m7"
+set_tests_properties(parser_shadow_gate_stream_processing_zero_internal_bridges PROPERTIES
+  LABELS "styio_pipeline;shadow_gate;stream_processing"
 )
 
 add_test(
   NAME parser_legacy_entry_audit
-  COMMAND bash "${STYIO_SOURCE_DIR}/scripts/parser-legacy-entry-audit.sh"
+  COMMAND "${Python3_EXECUTABLE}" "${STYIO_SOURCE_DIR}/scripts/parser-legacy-entry-audit.py"
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
 )
 set_tests_properties(parser_legacy_entry_audit PROPERTIES
@@ -283,8 +541,9 @@ target_link_libraries(
   GTest::gtest_main
 )
 target_compile_definitions(styio_test PRIVATE
-  "STYIO_SOURCE_DIR=\"${STYIO_SOURCE_DIR}\""
+  "STYIO_SOURCE_DIR=\"${STYIO_DEFINE_SOURCE_DIR}\""
   "STYIO_COMPILER_EXE=\"$<TARGET_FILE:styio>\""
+  "STYIO_TEST_C_COMPILER=\"${STYIO_DEFINE_CMAKE_C_COMPILER}\""
 )
 add_dependencies(styio_test styio)
 if(TARGET styio_nano)
@@ -294,29 +553,360 @@ if(TARGET styio_nano)
   add_dependencies(styio_test styio_nano)
 endif()
 
+add_executable(styio_algorithm_equivalence_test
+  "${STYIO_SOURCE_DIR}/src/StyioPlatform/Platform.cpp"
+  algorithms/.common/CxxReferenceEquivalence.cpp
+  algorithms/accumulate_sum/reference.cpp
+  algorithms/accumulate_sum/test.cpp
+  algorithms/adjacent_difference/reference.cpp
+  algorithms/adjacent_difference/test.cpp
+  algorithms/adjacent_equal_index/reference.cpp
+  algorithms/adjacent_equal_index/test.cpp
+  algorithms/all_positive_flag/reference.cpp
+  algorithms/all_positive_flag/test.cpp
+  algorithms/any_negative_flag/reference.cpp
+  algorithms/any_negative_flag/test.cpp
+  algorithms/binary_search/reference.cpp
+  algorithms/binary_search/test.cpp
+  algorithms/bubble_sort/reference.cpp
+  algorithms/bubble_sort/test.cpp
+  algorithms/count_value/reference.cpp
+  algorithms/count_value/test.cpp
+  algorithms/equal_flag/reference.cpp
+  algorithms/equal_flag/test.cpp
+  algorithms/equal_range_bounds/reference.cpp
+  algorithms/equal_range_bounds/test.cpp
+  algorithms/euclidean_gcd/reference.cpp
+  algorithms/euclidean_gcd/test.cpp
+  algorithms/exclusive_scan_sum/reference.cpp
+  algorithms/exclusive_scan_sum/test.cpp
+  algorithms/factorial/reference.cpp
+  algorithms/factorial/test.cpp
+  algorithms/inclusive_scan_sum/reference.cpp
+  algorithms/inclusive_scan_sum/test.cpp
+  algorithms/inner_product/reference.cpp
+  algorithms/inner_product/test.cpp
+  algorithms/is_sorted_flag/reference.cpp
+  algorithms/is_sorted_flag/test.cpp
+  algorithms/lexicographical_compare_flag/reference.cpp
+  algorithms/lexicographical_compare_flag/test.cpp
+  algorithms/linear_search/reference.cpp
+  algorithms/linear_search/test.cpp
+  algorithms/max_element_value/reference.cpp
+  algorithms/max_element_value/test.cpp
+  algorithms/minmax_pair/reference.cpp
+  algorithms/minmax_pair/test.cpp
+  algorithms/min_element_value/reference.cpp
+  algorithms/min_element_value/test.cpp
+  algorithms/mismatch_index/reference.cpp
+  algorithms/mismatch_index/test.cpp
+  algorithms/none_zero_flag/reference.cpp
+  algorithms/none_zero_flag/test.cpp
+  algorithms/prefix_sum/reference.cpp
+  algorithms/prefix_sum/test.cpp
+  algorithms/selection_sort/reference.cpp
+  algorithms/selection_sort/test.cpp
+  algorithms/subrange_find_end_index/reference.cpp
+  algorithms/subrange_find_end_index/test.cpp
+  algorithms/subrange_search_index/reference.cpp
+  algorithms/subrange_search_index/test.cpp
+  algorithms/transform_reduce_square_sum/reference.cpp
+  algorithms/transform_reduce_square_sum/test.cpp
+  algorithms/upper_bound_index/reference.cpp
+  algorithms/upper_bound_index/test.cpp
+)
+target_link_libraries(
+  styio_algorithm_equivalence_test
+  GTest::gtest_main
+)
+target_compile_definitions(styio_algorithm_equivalence_test PRIVATE
+  "STYIO_SOURCE_DIR=\"${STYIO_DEFINE_SOURCE_DIR}\""
+  "STYIO_COMPILER_EXE=\"$<TARGET_FILE:styio>\""
+)
+target_include_directories(styio_algorithm_equivalence_test PRIVATE
+  "${STYIO_SOURCE_DIR}"
+  "${STYIO_SOURCE_DIR}/src"
+)
+add_dependencies(styio_algorithm_equivalence_test styio)
+
 add_executable(styio_security_test
   security/styio_security_test.cpp
 )
 target_link_libraries(styio_security_test PRIVATE styio_core GTest::gtest_main)
-# Keep LLVM headers off all tests by default; only security test needs AST/session headers.
-target_include_directories(styio_security_test SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
-target_compile_definitions(styio_security_test PRIVATE ${LLVM_DEFINITIONS_LIST})
+target_compile_definitions(styio_security_test PRIVATE
+  "STYIO_TEST_C_COMPILER=\"${STYIO_DEFINE_CMAKE_C_COMPILER}\""
+)
+# Security tests transitively include codegen/session headers that reference
+# LLVM types. Use the shared helper so LLVM headers stay behind the standard
+# library on Debian/libstdc++.
+styio_apply_llvm_compile_settings(styio_security_test)
+
+add_executable(styio_typeinfer_internal_test
+  typeinfer_internal_test.cpp
+  "${STYIO_SOURCE_DIR}/src/StyioSession/SymbolInterner.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToken/Token.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioUnicode/Unicode.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/Parser.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/ParserLookahead.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/NewParserExpr.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/Tokenizer.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioProfiler/FrontendProfiler.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioPlatform/Platform.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioNative/NativeInterop.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioResourceTopology/ResourceTopology.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToString/ToString.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioIR/Verifier.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLowering/AstToStyioIR.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLowering/StyioIROptimizer.cpp"
+)
+target_include_directories(styio_typeinfer_internal_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_typeinfer_internal_test PRIVATE
+  styio_symbol_core
+  styio_runtime_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+  ${CMAKE_DL_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_typeinfer_internal_test)
+
+add_executable(styio_lowering_internal_test
+  lowering_internal_test.cpp
+  "${STYIO_SOURCE_DIR}/src/StyioSession/SymbolInterner.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToken/Token.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioUnicode/Unicode.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/Parser.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/ParserLookahead.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/NewParserExpr.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/Tokenizer.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioProfiler/FrontendProfiler.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioPlatform/Platform.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioNative/NativeInterop.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioResourceTopology/ResourceTopology.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToString/ToString.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioIR/Verifier.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioSema/TypeInfer.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLowering/StyioIROptimizer.cpp"
+)
+target_include_directories(styio_lowering_internal_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_lowering_internal_test PRIVATE
+  styio_symbol_core
+  styio_runtime_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+  ${CMAKE_DL_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_lowering_internal_test)
+
+add_executable(styio_newparser_internal_test
+  newparser_internal_test.cpp
+  "${STYIO_SOURCE_DIR}/src/StyioSession/SymbolInterner.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToken/Token.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioUnicode/Unicode.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/Parser.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/ParserLookahead.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/Tokenizer.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioProfiler/FrontendProfiler.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioPlatform/Platform.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioNative/NativeInterop.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioResourceTopology/ResourceTopology.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToString/ToString.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioIR/Verifier.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLowering/AstToStyioIR.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioSema/TypeInfer.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLowering/StyioIROptimizer.cpp"
+)
+target_include_directories(styio_newparser_internal_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_newparser_internal_test PRIVATE
+  styio_symbol_core
+  styio_runtime_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+  ${CMAKE_DL_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_newparser_internal_test)
+
+add_executable(styio_parser_internal_test
+  parser_internal_test.cpp
+  "${STYIO_SOURCE_DIR}/src/StyioSession/SymbolInterner.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToken/Token.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioUnicode/Unicode.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/NewParserExpr.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/ParserLookahead.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioParser/Tokenizer.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioProfiler/FrontendProfiler.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioPlatform/Platform.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioNative/NativeInterop.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioResourceTopology/ResourceTopology.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioToString/ToString.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioIR/Verifier.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLowering/AstToStyioIR.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioSema/TypeInfer.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioLowering/StyioIROptimizer.cpp"
+)
+target_include_directories(styio_parser_internal_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_parser_internal_test PRIVATE
+  styio_symbol_core
+  styio_runtime_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+  ${CMAKE_DL_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_parser_internal_test)
+
+add_executable(styio_native_interop_internal_test
+  native_interop_internal_test.cpp
+  "${STYIO_SOURCE_DIR}/src/StyioPlatform/Platform.cpp"
+)
+target_include_directories(styio_native_interop_internal_test PRIVATE
+  "${STYIO_SOURCE_DIR}/src"
+  "${STYIO_BINARY_DIR}/generated"
+)
+target_compile_definitions(styio_native_interop_internal_test PRIVATE
+  "STYIO_TEST_C_COMPILER=\"${STYIO_DEFINE_CMAKE_C_COMPILER}\""
+  "STYIO_TEST_CXX_COMPILER=\"${STYIO_DEFINE_CMAKE_CXX_COMPILER}\""
+)
+target_link_libraries(styio_native_interop_internal_test PRIVATE
+  GTest::gtest_main
+  ${CMAKE_DL_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_native_interop_internal_test)
+
+add_executable(styio_externlib_internal_test
+  externlib_internal_test.cpp
+  "${STYIO_SOURCE_DIR}/src/StyioRuntime/RuntimeState.cpp"
+)
+target_include_directories(styio_externlib_internal_test PRIVATE
+  "${STYIO_SOURCE_DIR}/src"
+  "${STYIO_BINARY_DIR}/generated"
+)
+target_link_libraries(styio_externlib_internal_test PRIVATE
+  GTest::gtest_main
+  ${CMAKE_DL_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_externlib_internal_test)
+
+add_executable(styio_codegen_internal_test
+  codegen_internal_test.cpp
+)
+target_link_libraries(styio_codegen_internal_test PRIVATE styio_core GTest::gtest_main)
+styio_apply_llvm_compile_settings(styio_codegen_internal_test)
+
+add_executable(styio_syntax_check_internal_test
+  syntax_check_internal_test.cpp
+)
+target_include_directories(styio_syntax_check_internal_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_syntax_check_internal_test PRIVATE
+  styio_frontend_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+)
+target_compile_definitions(styio_syntax_check_internal_test PRIVATE
+  "STYIO_PROJECT_VERSION=\"${PROJECT_VERSION}\""
+  "STYIO_RELEASE_CHANNEL=\"nightly\""
+  "STYIO_EDITION_MAX=\"2026\""
+)
+styio_apply_llvm_compile_settings(styio_syntax_check_internal_test)
+
+add_executable(styio_source_map_test
+  source_map_test.cpp
+)
+target_include_directories(styio_source_map_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_source_map_test PRIVATE
+  styio_frontend_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_source_map_test)
+
+add_executable(styio_symbol_interner_test
+  symbol_interner_test.cpp
+)
+target_include_directories(styio_symbol_interner_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_symbol_interner_test PRIVATE
+  styio_frontend_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_symbol_interner_test)
+
+add_executable(styio_type_table_test
+  type_table_test.cpp
+)
+target_include_directories(styio_type_table_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_type_table_test PRIVATE
+  styio_frontend_core
+  GTest::gtest_main
+  ${LLVM_LIBS}
+)
+styio_apply_llvm_compile_settings(styio_type_table_test)
+
+add_executable(styio_runtime_scheduler_test
+  runtime_scheduler_test.cpp
+)
+target_include_directories(styio_runtime_scheduler_test PRIVATE "${STYIO_SOURCE_DIR}/src")
+target_link_libraries(styio_runtime_scheduler_test PRIVATE
+  GTest::gtest_main
+)
+styio_apply_llvm_compile_settings(styio_runtime_scheduler_test)
+
+add_executable(styio_main_contract_test
+  main_contract_test.cpp
+)
+target_link_libraries(styio_main_contract_test PRIVATE
+  styio_core
+  styio_cli_contract_core
+  GTest::gtest_main
+)
+target_compile_definitions(styio_main_contract_test PRIVATE
+  "STYIO_PROJECT_VERSION=\"${PROJECT_VERSION}\""
+  "STYIO_RELEASE_CHANNEL=\"nightly\""
+  "STYIO_EDITION_MAX=\"2026\""
+  "STYIO_LLVM_DIR=\"${STYIO_DEFINE_LLVM_DIR}\""
+  "STYIO_SOURCE_DIR=\"${STYIO_DEFINE_SOURCE_DIR}\""
+  "STYIO_CMAKE_C_COMPILER=\"${STYIO_DEFINE_CMAKE_C_COMPILER}\""
+  "STYIO_CMAKE_CXX_COMPILER=\"${STYIO_DEFINE_CMAKE_CXX_COMPILER}\""
+)
+styio_apply_llvm_compile_settings(styio_main_contract_test)
+
+add_executable(styio_resource_topology_test
+  resource_topology_test.cpp
+)
+target_link_libraries(styio_resource_topology_test PRIVATE styio_core GTest::gtest_main)
+styio_apply_llvm_compile_settings(styio_resource_topology_test)
 
 add_executable(styio_ide_test
   ide/styio_ide_test.cpp
-  "${STYIO_SOURCE_DIR}/src/StyioLSP/Server.cpp"
+  "${STYIO_SOURCE_DIR}/src/StyioServices/StyioLSP/Server.cpp"
 )
 target_link_libraries(styio_ide_test PRIVATE styio_ide_core GTest::gtest_main ${LLVM_LIBS})
-target_include_directories(styio_ide_test SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
-target_compile_definitions(styio_ide_test PRIVATE ${LLVM_DEFINITIONS_LIST})
+styio_apply_llvm_compile_settings(styio_ide_test)
 if(STYIO_ENABLE_TREE_SITTER)
   target_compile_definitions(styio_ide_test PRIVATE STYIO_HAS_TREE_SITTER)
 endif()
 
 include(GoogleTest)
-gtest_discover_tests(styio_test
+if(WIN32)
+  # The historical aggregate styio_test binary still contains POSIX shell-heavy
+  # CLI/package tests. Native Windows coverage for those flows is provided by
+  # the portable Python CTest entries above; keep the target building and run
+  # the pure unit slice here without requiring bash/Git Bash.
+  add_test(
+    NAME styio_test_windows_native_slice
+    COMMAND "$<TARGET_FILE:styio_test>" "--gtest_filter=StyioTypes.*"
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  )
+  set_tests_properties(styio_test_windows_native_slice PROPERTIES
+    LABELS "styio_pipeline;unit;windows_native")
+else()
+  gtest_discover_tests(styio_test
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+    PROPERTIES LABELS "styio_pipeline\\;unit"
+  )
+endif()
+
+gtest_discover_tests(styio_algorithm_equivalence_test
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
-  PROPERTIES LABELS "styio_pipeline\\;unit"
+  PROPERTIES LABELS "styio_pipeline\\;algorithm_equivalence\\;unit"
 )
 
 gtest_discover_tests(styio_security_test
@@ -324,9 +914,82 @@ gtest_discover_tests(styio_security_test
   PROPERTIES LABELS "security\\;safety\\;lexer\\;ffi"
 )
 
+gtest_discover_tests(styio_typeinfer_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+gtest_discover_tests(styio_lowering_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+gtest_discover_tests(styio_newparser_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+gtest_discover_tests(styio_parser_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+gtest_discover_tests(styio_native_interop_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+gtest_discover_tests(styio_externlib_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+gtest_discover_tests(styio_codegen_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+gtest_discover_tests(styio_syntax_check_internal_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "security\\;safety\\;unit"
+)
+
+if(WIN32)
+  add_test(
+    NAME styio_main_contract_test_windows_native_slice
+    COMMAND "$<TARGET_FILE:styio_main_contract_test>"
+            "--gtest_filter=StyioMainContractSourceBuildInfo.*:StyioMainContract.EscapingDiagnosticsAndOptionMatchingStayStable:StyioMainContract.ConfigScalarsCommentsAndProjectConfigAreParsedConservatively:StyioMainContract.ConfigEnumFallbacksAndPathHelpersCoverBoundaryBranches:StyioMainContract.NanoConfigParsersHonorSectionsAliasesAndFailures:StyioMainContract.NanoProfileNameUsesProfileFieldAndStemFallback:StyioMainContract.NativeBuildArgsAndExecutableDiscoveryStayFailClosed:StyioMainContract.NativeBuildCompilerAndGeneratedArtifactsAreDeterministic:StyioMainContract.FrontendProfilerSerializesPhasesCountersAndWriteFailures"
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  )
+  set_tests_properties(styio_main_contract_test_windows_native_slice PROPERTIES
+    LABELS "styio_pipeline;unit;windows_native")
+else()
+  gtest_discover_tests(styio_main_contract_test
+    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+    PROPERTIES LABELS "styio_pipeline\\;unit"
+  )
+endif()
+
+gtest_discover_tests(styio_resource_topology_test
+  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  PROPERTIES LABELS "styio_pipeline\\;resource_topology\\;resource_topology\\;safety\\;unit"
+)
+
 gtest_discover_tests(styio_ide_test
   WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
   PROPERTIES LABELS "ide\\;lsp\\;unit"
+)
+
+gtest_discover_tests(styio_source_map_test
+  PROPERTIES LABELS "util\\;unit"
+)
+
+gtest_discover_tests(styio_symbol_interner_test
+  PROPERTIES LABELS "session\\;unit"
+)
+
+gtest_discover_tests(styio_type_table_test
+  PROPERTIES LABELS "session\\;unit"
 )
 
 option(STYIO_ENABLE_FUZZ "Build libFuzzer targets" OFF)

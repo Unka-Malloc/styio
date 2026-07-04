@@ -1,0 +1,116 @@
+# Build outputs and generated large artifacts
+# New local variants belong under /build/<variant>; /build-* stays ignored
+# only to keep legacy root build directories out of the index.
+/build/
+/build-*/
+Testing/
+cmake_test_discovery_*.json
+compile_commands.json
+
+# Local binaries / archives / debug bundles
+styio
+styio_test
+styio_security_test
+sample.ll
+output.ll
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.dSYM/
+
+# Local dev reports (scripts/dev-report.sh); 删除本行若需纳入版本库
+reports/
+benchmark/reports/*
+!benchmark/reports/
+!benchmark/reports/README.md
+benchmark/async-runtime/reports/
+
+# Visual Studio Code cache
+/.vscode/
+
+# Local IDE / agent metadata
+.cursor/
+/.idea/
+/.clangd/
+/.cache/
+/__pycache__/
+/.pytest_cache/
+/.mypy_cache/
+/.ruff_cache/
+/.venv/
+/venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.cache/
+node_modules/
+.idea/
+.clangd/
+
+# Local scratch / editor metadata
+.kilo/
+
+# Lit
+.lit_test_times.txt
+*.script
+*.styio.script
+
+# CMake cache
+CMakeFiles/
+CMakeCache.txt
+Makefile
+cmake_install.cmake
+
+# Xmake cache
+.xmake/
+
+# Profiling / sanitizer / fuzz leftovers
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+/*.log
+/*.tmp
+/tmp/
+*.log
+*.tmp
+tmp/
+build/
+build-*/
+
+# CI/local artifact staging
+fuzz-artifacts/
+sanitizer-artifacts/
+soak-artifacts/
+parser-shadow-artifacts/
+parser-shadow-artifacts-*/
+
+# MacOS Cache
+.DS_Store
+
+# Shared cross-repo tracked-fixture negate rules
+docs/audit/defects/
+!docs/**/build/
+!docs/**/build/**
+!docs/**/build-*/
+!docs/**/build-*/**
+!docs/**/tmp/
+!docs/**/tmp/**
+!docs/**/*.tmp
+!docs/**/*.log
+!tests/**/build/
+!tests/**/build/**
+!tests/**/build-*/
+!tests/**/build-*/**
+!tests/**/tmp/
+!tests/**/tmp/**
+!tests/**/*.tmp
+!tests/**/*.log

@@ -4,15 +4,23 @@
 #include <cstdint>
 #include <cctype>
 #include <cerrno>
-#include <filesystem>
+#include <atomic>
+#include <condition_variable>
+#include <cmath>
+#include <deque>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "ExternLib.hpp"
-#include "StyioConfig/NanoProfile.hpp"
+#include "StyioServices/StyioConfig/NanoProfile.hpp"
 #include "StyioRuntime/HandleTable.hpp"
 
 namespace {
@@ -22,20 +30,24 @@ thread_local char g_read_line_bufs[2][65536];
 thread_local int g_read_line_buf_which = 0;
 thread_local StyioHandleTable g_handle_table;
 thread_local std::unordered_set<const void*> g_owned_cstr_ptrs;
-thread_local bool g_runtime_error = false;
-thread_local std::string g_runtime_error_message;
-thread_local std::string g_runtime_error_subcode;
 
 constexpr const char* kRuntimeSubcodeInvalidFileHandle = "STYIO_RUNTIME_INVALID_FILE_HANDLE";
 constexpr const char* kRuntimeSubcodeFilePathNull = "STYIO_RUNTIME_FILE_PATH_NULL";
 constexpr const char* kRuntimeSubcodeFileOpenRead = "STYIO_RUNTIME_FILE_OPEN_READ";
 constexpr const char* kRuntimeSubcodeFileOpenWrite = "STYIO_RUNTIME_FILE_OPEN_WRITE";
+constexpr const char* kRuntimeSubcodeFileCleanupFailure = "STYIO_RUNTIME_FILE_CLEANUP_FAILURE";
 constexpr const char* kRuntimeSubcodeInvalidListHandle = "STYIO_RUNTIME_INVALID_LIST_HANDLE";
 constexpr const char* kRuntimeSubcodeInvalidDictHandle = "STYIO_RUNTIME_INVALID_DICT_HANDLE";
+constexpr const char* kRuntimeSubcodeInvalidMatrixHandle = "STYIO_RUNTIME_INVALID_MATRIX_HANDLE";
+constexpr const char* kRuntimeSubcodeInvalidTaskHandle = "STYIO_RUNTIME_INVALID_TASK_HANDLE";
+constexpr const char* kRuntimeSubcodeTaskConsumed = "STYIO_RUNTIME_TASK_CONSUMED";
 constexpr const char* kRuntimeSubcodeListParse = "STYIO_RUNTIME_LIST_PARSE";
 constexpr const char* kRuntimeSubcodeListIndex = "STYIO_RUNTIME_LIST_INDEX";
 constexpr const char* kRuntimeSubcodeListElemKind = "STYIO_RUNTIME_LIST_ELEM_KIND";
 constexpr const char* kRuntimeSubcodeDictKey = "STYIO_RUNTIME_DICT_KEY";
+constexpr const char* kRuntimeSubcodeMatrixIndex = "STYIO_RUNTIME_MATRIX_INDEX";
+constexpr const char* kRuntimeSubcodeMatrixShape = "STYIO_RUNTIME_MATRIX_SHAPE";
+constexpr const char* kRuntimeSubcodeMatrixElemKind = "STYIO_RUNTIME_MATRIX_ELEM_KIND";
 constexpr const char* kRuntimeSubcodeNumericParse = "STYIO_RUNTIME_NUMERIC_PARSE";
 
 enum class StyioListElemKind : std::uint8_t
@@ -46,6 +58,8 @@ enum class StyioListElemKind : std::uint8_t
   String = 3,
   ListHandle = 4,
   DictHandle = 5,
+  Char = 6,
+  MatrixHandle = 7,
 };
 
 struct StyioListBase
@@ -75,6 +89,15 @@ struct StyioListBool : public StyioListBase
   }
 
   std::vector<int64_t> elems;
+};
+
+struct StyioListChar : public StyioListBase
+{
+  StyioListChar() :
+      StyioListBase(StyioListElemKind::Char) {
+  }
+
+  std::vector<int8_t> elems;
 };
 
 struct StyioListF64 : public StyioListBase
@@ -113,6 +136,341 @@ struct StyioListDictHandle : public StyioListBase
   std::vector<int64_t> elems;
 };
 
+struct StyioListMatrixHandle : public StyioListBase
+{
+  StyioListMatrixHandle() :
+      StyioListBase(StyioListElemKind::MatrixHandle) {
+  }
+
+  std::vector<int64_t> elems;
+};
+
+enum class StyioMatrixElemKind : std::uint8_t
+{
+  I64 = 1,
+  F64 = 2,
+};
+
+struct StyioMatrixBase
+{
+  StyioMatrixBase(StyioMatrixElemKind kind, int64_t r, int64_t c) :
+      elem_kind(kind), rows(r), cols(c) {
+  }
+
+  virtual ~StyioMatrixBase() = default;
+
+  StyioMatrixElemKind elem_kind;
+  int64_t rows = 0;
+  int64_t cols = 0;
+};
+
+struct StyioMatrixI64 : public StyioMatrixBase
+{
+  StyioMatrixI64(int64_t r, int64_t c) :
+      StyioMatrixBase(StyioMatrixElemKind::I64, r, c),
+      elems(static_cast<size_t>(r * c), 0) {
+  }
+
+  std::vector<int64_t> elems;
+};
+
+struct StyioMatrixF64 : public StyioMatrixBase
+{
+  StyioMatrixF64(int64_t r, int64_t c) :
+      StyioMatrixBase(StyioMatrixElemKind::F64, r, c),
+      elems(static_cast<size_t>(r * c), 0.0) {
+  }
+
+  std::vector<double> elems;
+};
+
+enum class StyioTaskValueKind : std::uint8_t
+{
+  I64 = 1,
+  F64 = 2,
+  String = 3,
+};
+
+struct StyioTaskSchedulerProfileCounters
+{
+  std::atomic<int64_t> ready_tasks{0};
+  std::atomic<int64_t> spawned_tasks{0};
+  std::atomic<int64_t> enqueued_tasks{0};
+  std::atomic<int64_t> started_tasks{0};
+  std::atomic<int64_t> completed_tasks{0};
+  std::atomic<int64_t> pulled_tasks{0};
+  std::atomic<int64_t> released_tasks{0};
+  std::atomic<int64_t> fast_ready_pulls{0};
+  std::atomic<int64_t> blocking_pulls{0};
+  std::atomic<int64_t> failed_pulls{0};
+  std::atomic<int64_t> invalid_pulls{0};
+  std::atomic<int64_t> max_queue_depth{0};
+
+  void reset() {
+    ready_tasks.store(0, std::memory_order_relaxed);
+    spawned_tasks.store(0, std::memory_order_relaxed);
+    enqueued_tasks.store(0, std::memory_order_relaxed);
+    started_tasks.store(0, std::memory_order_relaxed);
+    completed_tasks.store(0, std::memory_order_relaxed);
+    pulled_tasks.store(0, std::memory_order_relaxed);
+    released_tasks.store(0, std::memory_order_relaxed);
+    fast_ready_pulls.store(0, std::memory_order_relaxed);
+    blocking_pulls.store(0, std::memory_order_relaxed);
+    failed_pulls.store(0, std::memory_order_relaxed);
+    invalid_pulls.store(0, std::memory_order_relaxed);
+    max_queue_depth.store(0, std::memory_order_relaxed);
+  }
+};
+
+std::atomic<bool> g_task_scheduler_profile_enabled{false};
+StyioTaskSchedulerProfileCounters g_task_scheduler_profile_counters;
+
+bool
+task_scheduler_profile_enabled() {
+  return g_task_scheduler_profile_enabled.load(std::memory_order_relaxed);
+}
+
+void
+clear_runtime_error_state() {
+  styio::runtime::clear_error_state();
+}
+
+void
+task_profile_inc(std::atomic<int64_t>& counter) {
+  if (task_scheduler_profile_enabled()) {
+    counter.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+void
+task_profile_update_max(std::atomic<int64_t>& counter, int64_t value) {
+  if (!task_scheduler_profile_enabled()) {
+    return;
+  }
+  int64_t observed = counter.load(std::memory_order_relaxed);
+  while (observed < value
+         && !counter.compare_exchange_weak(
+              observed,
+              value,
+              std::memory_order_relaxed,
+              std::memory_order_relaxed)) {
+  }
+}
+
+struct StyioTask
+{
+  using I64Fn = int64_t (*)(void*);
+  using F64Fn = double (*)(void*);
+  using CStrFn = const char* (*)(void*);
+
+  explicit StyioTask(StyioTaskValueKind k) :
+      kind(k) {
+  }
+
+  StyioTaskValueKind kind;
+  int64_t i64 = 0;
+  double f64 = 0.0;
+  std::string str;
+  I64Fn i64_fn = nullptr;
+  F64Fn f64_fn = nullptr;
+  CStrFn cstr_fn = nullptr;
+  void* ctx = nullptr;
+  std::atomic<bool> ready{false};
+  std::atomic<bool> consumed{false};
+  bool failed = false;
+  std::string error_message;
+  std::string error_subcode;
+
+  void run() noexcept {
+    task_profile_inc(g_task_scheduler_profile_counters.started_tasks);
+    int64_t local_i64 = 0;
+    double local_f64 = 0.0;
+    std::string local_str;
+    bool local_failed = false;
+    std::string local_error;
+    std::string local_subcode;
+
+    try {
+      clear_runtime_error_state();
+      switch (kind) {
+        case StyioTaskValueKind::I64:
+          if (i64_fn != nullptr) {
+            local_i64 = i64_fn(ctx);
+          }
+          break;
+        case StyioTaskValueKind::F64:
+          if (f64_fn != nullptr) {
+            local_f64 = f64_fn(ctx);
+          }
+          break;
+        case StyioTaskValueKind::String:
+          if (cstr_fn != nullptr) {
+            const char* raw = cstr_fn(ctx);
+            if (raw != nullptr) {
+              local_str = raw;
+            }
+          }
+          break;
+      }
+      const styio::runtime::RuntimeErrorSnapshot runtime_error =
+        styio::runtime::take_error();
+      if (runtime_error.has_error) {
+        local_failed = true;
+        local_error = !runtime_error.message.empty()
+          ? runtime_error.message
+          : std::string("task runtime error");
+        local_subcode = runtime_error.subcode;
+      }
+    }
+    catch (const std::exception& ex) {
+      local_failed = true;
+      local_error = ex.what();
+      local_subcode = "STYIO_RUNTIME_TASK_EXCEPTION";
+    }
+    catch (...) {
+      local_failed = true;
+      local_error = "unknown task exception";
+      local_subcode = "STYIO_RUNTIME_TASK_EXCEPTION";
+    }
+
+    if (ctx != nullptr) {
+      std::free(ctx);
+      ctx = nullptr;
+    }
+
+    i64 = local_i64;
+    f64 = local_f64;
+    str = std::move(local_str);
+    failed = local_failed;
+    error_message = std::move(local_error);
+    error_subcode = std::move(local_subcode);
+    ready.store(true, std::memory_order_release);
+    task_profile_inc(g_task_scheduler_profile_counters.completed_tasks);
+    ready.notify_all();
+  }
+};
+
+void
+wait_until_task_ready(StyioTask* task) {
+  while (!task->ready.load(std::memory_order_acquire)) {
+    task->ready.wait(false, std::memory_order_acquire);
+  }
+}
+
+class StyioTaskScheduler
+{
+public:
+  static StyioTaskScheduler& instance() {
+    static StyioTaskScheduler scheduler;
+    return scheduler;
+  }
+
+  void enqueue(StyioTask* task) {
+    ensure_started();
+    {
+      std::lock_guard<std::mutex> lock(mu_);
+      queue_.push_back(task);
+      task_profile_update_max(
+        g_task_scheduler_profile_counters.max_queue_depth,
+        static_cast<int64_t>(queue_.size()));
+    }
+    task_profile_inc(g_task_scheduler_profile_counters.enqueued_tasks);
+    cv_.notify_one();
+  }
+
+  std::size_t worker_count() {
+    ensure_started();
+    std::lock_guard<std::mutex> lock(mu_);
+    return workers_.size();
+  }
+
+  std::size_t current_worker_count() {
+    std::lock_guard<std::mutex> lock(mu_);
+    return workers_.size();
+  }
+
+private:
+  std::mutex mu_;
+  std::condition_variable cv_;
+  std::deque<StyioTask*> queue_;
+  std::vector<std::thread> workers_;
+  std::atomic<bool> started_{false};
+  bool stopping_ = false;
+
+  StyioTaskScheduler() = default;
+
+  ~StyioTaskScheduler() {
+    {
+      std::lock_guard<std::mutex> lock(mu_);
+      stopping_ = true;
+    }
+    cv_.notify_all();
+    for (std::thread& worker : workers_) {
+      if (worker.joinable()) {
+        worker.join();
+      }
+    }
+  }
+
+  void ensure_started() {
+    if (started_.load(std::memory_order_acquire)) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(mu_);
+    if (!workers_.empty()) {
+      started_.store(true, std::memory_order_release);
+      return;
+    }
+    std::size_t count = std::thread::hardware_concurrency();
+    if (const char* raw = std::getenv("STYIO_TASK_THREADS")) {
+      char* end = nullptr;
+      errno = 0;
+      const unsigned long parsed = std::strtoul(raw, &end, 10);
+      if (errno == 0 && end != raw && parsed > 0) {
+        count = static_cast<std::size_t>(parsed);
+      }
+    }
+    if (count == 0) {
+      count = 1;
+    }
+    if (count > 64) {
+      count = 64;
+    }
+    workers_.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+      workers_.emplace_back([this]() { worker_loop(); });
+    }
+    started_.store(true, std::memory_order_release);
+  }
+
+  void worker_loop() {
+    std::vector<StyioTask*> local_batch;
+    local_batch.reserve(64);
+    for (;;) {
+      local_batch.clear();
+      {
+        std::unique_lock<std::mutex> lock(mu_);
+        cv_.wait(lock, [this]() { return stopping_ || !queue_.empty(); });
+        if (stopping_ && queue_.empty()) {
+          return;
+        }
+        const std::size_t batch_limit = queue_.size() > workers_.size() ? 64 : 1;
+        local_batch.push_back(queue_.front());
+        queue_.pop_front();
+        while (!queue_.empty() && local_batch.size() < batch_limit) {
+          local_batch.push_back(queue_.front());
+          queue_.pop_front();
+        }
+      }
+      for (StyioTask* task : local_batch) {
+        if (task != nullptr) {
+          task->run();
+        }
+      }
+    }
+  }
+};
+
 enum class StyioDictValueKind : std::uint8_t
 {
   Bool = 0,
@@ -138,10 +496,10 @@ struct StyioDictBackendSpec
 
 constexpr StyioDictBackendSpec kStyioDictBackendRegistry[] = {
 #if STYIO_NANO_ENABLE_DICT_BACKEND_ORDERED_HASH
-  {StyioDictRuntimeImpl::OrderedHash, "ordered-hash", {"ordered_hash", "v2", nullptr}},
+  {StyioDictRuntimeImpl::OrderedHash, "ordered-hash", {"ordered_hash", nullptr, nullptr}},
 #endif
 #if STYIO_NANO_ENABLE_DICT_BACKEND_LINEAR
-  {StyioDictRuntimeImpl::Linear, "linear", {"v1", nullptr, nullptr}},
+  {StyioDictRuntimeImpl::Linear, "linear", {nullptr, nullptr, nullptr}},
 #endif
 };
 
@@ -184,14 +542,20 @@ using StyioDictDictHandle = StyioDictStorage<int64_t, StyioDictValueKind::DictHa
 
 thread_local int64_t g_active_list_handles = 0;
 thread_local int64_t g_active_dict_handles = 0;
+thread_local int64_t g_active_matrix_handles = 0;
+thread_local int64_t g_active_task_handles = 0;
 thread_local StyioDictRuntimeImpl g_default_dict_runtime_impl = StyioDictRuntimeImpl::OrderedHash;
 
 void close_list(void* raw);
 void close_dict(void* raw);
+void close_matrix(void* raw);
+void close_task(void* raw);
 int64_t clone_list_handle_value(int64_t h);
 int64_t clone_dict_handle_value(int64_t h);
+int64_t clone_matrix_handle_value(int64_t h);
 void append_list_handle_repr(std::string& out, int64_t h);
 void append_dict_handle_repr(std::string& out, int64_t h);
+void append_matrix_handle_repr(std::string& out, int64_t h);
 
 thread_local struct HandleTableCleanup {
   ~HandleTableCleanup() {
@@ -204,6 +568,12 @@ thread_local struct HandleTableCleanup {
     g_handle_table.release_all(
       StyioHandleTable::HandleKind::Dict,
       [](void* raw) { close_dict(raw); });
+    g_handle_table.release_all(
+      StyioHandleTable::HandleKind::Matrix,
+      [](void* raw) { close_matrix(raw); });
+    g_handle_table.release_all(
+      StyioHandleTable::HandleKind::Task,
+      [](void* raw) { close_task(raw); });
   }
 } g_handle_table_cleanup;
 
@@ -263,49 +633,12 @@ resolve_read_path(const char* path) {
   if (path == nullptr) {
     return {};
   }
-
-  std::string p(path);
-  std::error_code ec;
-  if (std::filesystem::exists(p, ec)) {
-    return p;
-  }
-
-  constexpr const char* kTestsPrefix = "tests/";
-  constexpr const char* kMilestonesPrefix = "tests/milestones/";
-  if (p.rfind(kTestsPrefix, 0) != 0 || p.rfind(kMilestonesPrefix, 0) == 0) {
-    return p;
-  }
-
-  std::string tail = p.substr(std::strlen(kTestsPrefix)); // m5/data/...
-  const size_t slash = tail.find('/');
-  if (slash == std::string::npos) {
-    return p;
-  }
-
-  const std::string top = tail.substr(0, slash); // m5
-  if (top.size() < 2 || top[0] != 'm') {
-    return p;
-  }
-  for (size_t i = 1; i < top.size(); ++i) {
-    if (!std::isdigit(static_cast<unsigned char>(top[i]))) {
-      return p;
-    }
-  }
-
-  std::string candidate = std::string(kMilestonesPrefix) + tail;
-  if (std::filesystem::exists(candidate, ec)) {
-    return candidate;
-  }
-  return p;
+  return std::string(path);
 }
 
 void
 set_runtime_error_once(const char* subcode, const std::string& message) {
-  g_runtime_error = true;
-  if (g_runtime_error_message.empty()) {
-    g_runtime_error_message = message;
-    g_runtime_error_subcode = (subcode != nullptr) ? subcode : "";
-  }
+  styio::runtime::set_error_once(subcode, message);
 }
 
 int64_t
@@ -313,9 +646,82 @@ stash_file(FILE* f) {
   return g_handle_table.acquire(StyioHandleTable::HandleKind::File, f);
 }
 
+void
+close_task(void* raw) {
+  auto* task = static_cast<StyioTask*>(raw);
+  if (task != nullptr) {
+    if (!task->ready.load(std::memory_order_acquire)) {
+      wait_until_task_ready(task);
+    }
+    delete task;
+    task_profile_inc(g_task_scheduler_profile_counters.released_tasks);
+    if (g_active_task_handles > 0) {
+      --g_active_task_handles;
+    }
+  }
+}
+
+int64_t
+stash_task(StyioTask* task) {
+  const int64_t h = g_handle_table.acquire(StyioHandleTable::HandleKind::Task, task);
+  if (h != 0) {
+    ++g_active_task_handles;
+  }
+  return h;
+}
+
+StyioTask*
+as_task_handle(int64_t h, StyioTaskValueKind expected_kind) {
+  auto* task = g_handle_table.lookup_as<StyioTask>(
+    h,
+    StyioHandleTable::HandleKind::Task);
+  if (task == nullptr) {
+    task_profile_inc(g_task_scheduler_profile_counters.invalid_pulls);
+    set_runtime_error_once(kRuntimeSubcodeInvalidTaskHandle, "invalid task handle");
+    return nullptr;
+  }
+  if (task->kind != expected_kind) {
+    task_profile_inc(g_task_scheduler_profile_counters.invalid_pulls);
+    set_runtime_error_once(kRuntimeSubcodeInvalidTaskHandle, "task result kind mismatch");
+    return nullptr;
+  }
+  return task;
+}
+
+StyioTask*
+as_task_for_pull(int64_t h, StyioTaskValueKind expected_kind) {
+  StyioTask* task = as_task_handle(h, expected_kind);
+  if (task == nullptr) {
+    return nullptr;
+  }
+  if (task->ready.load(std::memory_order_acquire)) {
+    task_profile_inc(g_task_scheduler_profile_counters.fast_ready_pulls);
+  }
+  else {
+    task_profile_inc(g_task_scheduler_profile_counters.blocking_pulls);
+    wait_until_task_ready(task);
+  }
+  if (task->failed) {
+    task_profile_inc(g_task_scheduler_profile_counters.failed_pulls);
+    set_runtime_error_once(
+      task->error_subcode.empty() ? kRuntimeSubcodeInvalidTaskHandle : task->error_subcode.c_str(),
+      task->error_message.empty() ? "task failed" : task->error_message);
+    return nullptr;
+  }
+  if (task->consumed.exchange(true, std::memory_order_acq_rel)) {
+    set_runtime_error_once(kRuntimeSubcodeTaskConsumed, "task result has already been pulled");
+    return nullptr;
+  }
+  task_profile_inc(g_task_scheduler_profile_counters.pulled_tasks);
+  return task;
+}
+
 FILE*
 as_file(int64_t h, bool diagnose_if_missing = false) {
   if (h == 0) {
+    if (diagnose_if_missing) {
+      set_runtime_error_once(kRuntimeSubcodeInvalidFileHandle, "invalid file handle: 0");
+    }
     return nullptr;
   }
   FILE* f = g_handle_table.lookup_as<FILE>(h, StyioHandleTable::HandleKind::File);
@@ -332,7 +738,16 @@ close_file(void* raw) {
   if (raw == nullptr) {
     return;
   }
-  std::fclose(static_cast<FILE*>(raw));
+  errno = 0;
+  if (std::fclose(static_cast<FILE*>(raw)) != 0) {
+    const int saved_errno = errno;
+    std::string message = "file cleanup failed";
+    if (saved_errno != 0) {
+      message += ": ";
+      message += std::strerror(saved_errno);
+    }
+    set_runtime_error_once(kRuntimeSubcodeFileCleanupFailure, message);
+  }
 }
 
 int64_t
@@ -390,6 +805,23 @@ as_list_bool(int64_t h, bool diagnose_if_missing = false) {
     return nullptr;
   }
   return static_cast<StyioListBool*>(list);
+}
+
+StyioListChar*
+as_list_char(int64_t h, bool diagnose_if_missing = false) {
+  StyioListBase* list = as_list_base(h, diagnose_if_missing);
+  if (list == nullptr) {
+    return nullptr;
+  }
+  if (list->elem_kind != StyioListElemKind::Char) {
+    if (diagnose_if_missing) {
+      set_runtime_error_once(
+        kRuntimeSubcodeListElemKind,
+        "list handle does not carry char elements: " + std::to_string(static_cast<long long>(h)));
+    }
+    return nullptr;
+  }
+  return static_cast<StyioListChar*>(list);
 }
 
 StyioListF64*
@@ -462,6 +894,164 @@ as_list_dict_handle(int64_t h, bool diagnose_if_missing = false) {
   return static_cast<StyioListDictHandle*>(list);
 }
 
+StyioListMatrixHandle*
+as_list_matrix_handle(int64_t h, bool diagnose_if_missing = false) {
+  StyioListBase* list = as_list_base(h, diagnose_if_missing);
+  if (list == nullptr) {
+    return nullptr;
+  }
+  if (list->elem_kind != StyioListElemKind::MatrixHandle) {
+    if (diagnose_if_missing) {
+      set_runtime_error_once(
+        kRuntimeSubcodeListElemKind,
+        "list handle does not carry matrix-handle elements: "
+          + std::to_string(static_cast<long long>(h)));
+    }
+    return nullptr;
+  }
+  return static_cast<StyioListMatrixHandle*>(list);
+}
+
+bool
+check_matrix_dims(int64_t rows, int64_t cols) {
+  if (rows <= 0 || cols <= 0) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixShape, "matrix dimensions must be positive");
+    return false;
+  }
+  if (rows > (std::numeric_limits<int64_t>::max() / cols)) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixShape, "matrix dimensions overflow element count");
+    return false;
+  }
+  return true;
+}
+
+int64_t
+stash_matrix(StyioMatrixBase* matrix) {
+  if (matrix == nullptr) {
+    return 0;
+  }
+  ++g_active_matrix_handles;
+  return g_handle_table.acquire(StyioHandleTable::HandleKind::Matrix, matrix);
+}
+
+StyioMatrixBase*
+as_matrix_base(int64_t h, bool diagnose_if_missing = false) {
+  if (h == 0) {
+    return nullptr;
+  }
+  auto* matrix = g_handle_table.lookup_as<StyioMatrixBase>(h, StyioHandleTable::HandleKind::Matrix);
+  if (matrix == nullptr && diagnose_if_missing) {
+    set_runtime_error_once(
+      kRuntimeSubcodeInvalidMatrixHandle,
+      "invalid matrix handle: " + std::to_string(static_cast<long long>(h)));
+  }
+  return matrix;
+}
+
+StyioMatrixI64*
+as_matrix_i64(int64_t h, bool diagnose_if_missing = false) {
+  StyioMatrixBase* matrix = as_matrix_base(h, diagnose_if_missing);
+  if (matrix == nullptr) {
+    return nullptr;
+  }
+  if (matrix->elem_kind != StyioMatrixElemKind::I64) {
+    if (diagnose_if_missing) {
+      set_runtime_error_once(
+        kRuntimeSubcodeMatrixElemKind,
+        "matrix handle does not carry i64 elements: " + std::to_string(static_cast<long long>(h)));
+    }
+    return nullptr;
+  }
+  return static_cast<StyioMatrixI64*>(matrix);
+}
+
+StyioMatrixF64*
+as_matrix_f64(int64_t h, bool diagnose_if_missing = false) {
+  StyioMatrixBase* matrix = as_matrix_base(h, diagnose_if_missing);
+  if (matrix == nullptr) {
+    return nullptr;
+  }
+  if (matrix->elem_kind != StyioMatrixElemKind::F64) {
+    if (diagnose_if_missing) {
+      set_runtime_error_once(
+        kRuntimeSubcodeMatrixElemKind,
+        "matrix handle does not carry f64 elements: " + std::to_string(static_cast<long long>(h)));
+    }
+    return nullptr;
+  }
+  return static_cast<StyioMatrixF64*>(matrix);
+}
+
+bool
+check_matrix_index(const StyioMatrixBase* matrix, int64_t row, int64_t col) {
+  if (matrix == nullptr) {
+    return false;
+  }
+  if (row < 0 || col < 0 || row >= matrix->rows || col >= matrix->cols) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixIndex, "matrix index out of bounds");
+    return false;
+  }
+  return true;
+}
+
+bool
+check_matrix_row_slice_bounds(
+  const StyioMatrixBase* matrix,
+  int64_t start,
+  int64_t end_exclusive,
+  bool has_end,
+  int64_t& begin,
+  int64_t& finish
+) {
+  if (matrix == nullptr) {
+    return false;
+  }
+  if (start < 0) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixIndex, "matrix row slice start out of bounds");
+    return false;
+  }
+  if (has_end && end_exclusive < 0) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixIndex, "matrix row slice end out of bounds");
+    return false;
+  }
+  const int64_t stop = has_end ? end_exclusive : matrix->rows;
+  if (start > matrix->rows || stop > matrix->rows || stop < start) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixIndex, "matrix row slice bounds out of range");
+    return false;
+  }
+  begin = start;
+  finish = stop;
+  return true;
+}
+
+size_t
+matrix_offset(const StyioMatrixBase* matrix, int64_t row, int64_t col) {
+  return static_cast<size_t>(row * matrix->cols + col);
+}
+
+bool
+same_matrix_shape(const StyioMatrixBase* lhs, const StyioMatrixBase* rhs) {
+  if (lhs == nullptr || rhs == nullptr) {
+    return false;
+  }
+  if (lhs->rows != rhs->rows || lhs->cols != rhs->cols) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixShape, "matrix shapes must match");
+    return false;
+  }
+  return true;
+}
+
+template <typename MatrixT>
+int64_t
+clone_matrix(MatrixT* matrix) {
+  if (matrix == nullptr) {
+    return 0;
+  }
+  auto* out = new MatrixT(matrix->rows, matrix->cols);
+  out->elems = matrix->elems;
+  return stash_matrix(out);
+}
+
 void
 close_list(void* raw) {
   if (raw == nullptr) {
@@ -471,6 +1061,9 @@ close_list(void* raw) {
   switch (list->elem_kind) {
     case StyioListElemKind::Bool:
       delete static_cast<StyioListBool*>(list);
+      break;
+    case StyioListElemKind::Char:
+      delete static_cast<StyioListChar*>(list);
       break;
     case StyioListElemKind::I64:
       delete static_cast<StyioListI64*>(list);
@@ -495,9 +1088,35 @@ close_list(void* raw) {
       }
       delete handles;
     } break;
+    case StyioListElemKind::MatrixHandle: {
+      auto* handles = static_cast<StyioListMatrixHandle*>(list);
+      for (int64_t elem : handles->elems) {
+        (void)g_handle_table.release(elem, StyioHandleTable::HandleKind::Matrix, close_matrix);
+      }
+      delete handles;
+    } break;
   }
   if (g_active_list_handles > 0) {
     --g_active_list_handles;
+  }
+}
+
+void
+close_matrix(void* raw) {
+  if (raw == nullptr) {
+    return;
+  }
+  auto* matrix = static_cast<StyioMatrixBase*>(raw);
+  switch (matrix->elem_kind) {
+    case StyioMatrixElemKind::I64:
+      delete static_cast<StyioMatrixI64*>(matrix);
+      break;
+    case StyioMatrixElemKind::F64:
+      delete static_cast<StyioMatrixF64*>(matrix);
+      break;
+  }
+  if (g_active_matrix_handles > 0) {
+    --g_active_matrix_handles;
   }
 }
 
@@ -864,6 +1483,50 @@ parse_i64_list_literal(const std::string& input, std::vector<int64_t>& out) {
   return false;
 }
 
+bool
+parse_f64_list_literal(const std::string& input, std::vector<double>& out) {
+  size_t pos = 0;
+  skip_ws(input, pos);
+  if (pos >= input.size() || input[pos] != '[') {
+    return false;
+  }
+  ++pos;
+  skip_ws(input, pos);
+  if (pos < input.size() && input[pos] == ']') {
+    ++pos;
+    skip_ws(input, pos);
+    return pos == input.size();
+  }
+
+  while (pos < input.size()) {
+    const char* begin = input.c_str() + pos;
+    char* end = nullptr;
+    double v = std::strtod(begin, &end);
+    if (end == begin || !std::isfinite(v)) {
+      return false;
+    }
+    out.push_back(v);
+    pos = static_cast<size_t>(end - input.c_str());
+    skip_ws(input, pos);
+    if (pos >= input.size()) {
+      return false;
+    }
+    if (input[pos] == ',') {
+      ++pos;
+      skip_ws(input, pos);
+      continue;
+    }
+    if (input[pos] == ']') {
+      ++pos;
+      skip_ws(input, pos);
+      return pos == input.size();
+    }
+    return false;
+  }
+
+  return false;
+}
+
 std::string
 read_all_stdin() {
   std::string input;
@@ -908,6 +1571,32 @@ escape_string_for_literal(const std::string& input) {
 }
 
 std::string
+escape_char_for_literal(int8_t raw) {
+  const unsigned char ch = static_cast<unsigned char>(raw);
+  switch (ch) {
+    case '\\':
+      return "\\\\";
+    case '\'':
+      return "\\'";
+    case '\n':
+      return "\\n";
+    case '\r':
+      return "\\r";
+    case '\t':
+      return "\\t";
+    case '\0':
+      return "\\0";
+    default:
+      if (std::isprint(ch)) {
+        return std::string(1, static_cast<char>(ch));
+      }
+      char buf[5];
+      std::snprintf(buf, sizeof(buf), "\\x%02X", static_cast<unsigned>(ch));
+      return std::string(buf);
+  }
+}
+
+std::string
 format_f64_literal(double value) {
   char buf[64];
   std::snprintf(buf, sizeof(buf), "%.6f", value);
@@ -935,6 +1624,11 @@ clone_list_handle_value(int64_t h) {
     case StyioListElemKind::Bool: {
       auto* clone = new StyioListBool();
       clone->elems = static_cast<StyioListBool*>(src)->elems;
+      return stash_list(clone);
+    }
+    case StyioListElemKind::Char: {
+      auto* clone = new StyioListChar();
+      clone->elems = static_cast<StyioListChar*>(src)->elems;
       return stash_list(clone);
     }
     case StyioListElemKind::I64: {
@@ -970,6 +1664,30 @@ clone_list_handle_value(int64_t h) {
       }
       return stash_list(clone);
     }
+    case StyioListElemKind::MatrixHandle: {
+      auto* clone = new StyioListMatrixHandle();
+      auto* handles = static_cast<StyioListMatrixHandle*>(src);
+      clone->elems.reserve(handles->elems.size());
+      for (int64_t elem : handles->elems) {
+        clone->elems.push_back(clone_matrix_handle_value(elem));
+      }
+      return stash_list(clone);
+    }
+  }
+  return 0;
+}
+
+int64_t
+clone_matrix_handle_value(int64_t h) {
+  StyioMatrixBase* src = as_matrix_base(h, true);
+  if (src == nullptr) {
+    return 0;
+  }
+  switch (src->elem_kind) {
+    case StyioMatrixElemKind::I64:
+      return clone_matrix(static_cast<StyioMatrixI64*>(src));
+    case StyioMatrixElemKind::F64:
+      return clone_matrix(static_cast<StyioMatrixF64*>(src));
   }
   return 0;
 }
@@ -1028,6 +1746,17 @@ append_list_handle_repr(std::string& out, int64_t h) {
           text += bools->elems[i] != 0 ? "true" : "false";
         }
       } break;
+      case StyioListElemKind::Char: {
+        auto* chars = static_cast<StyioListChar*>(list);
+        for (size_t i = 0; i < chars->elems.size(); ++i) {
+          if (i > 0) {
+            text.push_back(',');
+          }
+          text.push_back('\'');
+          text += escape_char_for_literal(chars->elems[i]);
+          text.push_back('\'');
+        }
+      } break;
       case StyioListElemKind::I64: {
         auto* ints = static_cast<StyioListI64*>(list);
         for (size_t i = 0; i < ints->elems.size(); ++i) {
@@ -1073,6 +1802,15 @@ append_list_handle_repr(std::string& out, int64_t h) {
             text.push_back(',');
           }
           append_dict_handle_repr(text, dicts->elems[i]);
+        }
+      } break;
+      case StyioListElemKind::MatrixHandle: {
+        auto* matrices = static_cast<StyioListMatrixHandle*>(list);
+        for (size_t i = 0; i < matrices->elems.size(); ++i) {
+          if (i > 0) {
+            text.push_back(',');
+          }
+          append_matrix_handle_repr(text, matrices->elems[i]);
         }
       } break;
     }
@@ -1170,6 +1908,39 @@ append_dict_handle_repr(std::string& out, int64_t h) {
   out += text;
 }
 
+void
+append_matrix_handle_repr(std::string& out, int64_t h) {
+  StyioMatrixBase* matrix = as_matrix_base(h, true);
+  if (matrix == nullptr) {
+    out += "[]";
+    return;
+  }
+  std::string text = "[";
+  for (int64_t r = 0; r < matrix->rows; ++r) {
+    if (r > 0) {
+      text.push_back(',');
+    }
+    text.push_back('[');
+    for (int64_t c = 0; c < matrix->cols; ++c) {
+      if (c > 0) {
+        text.push_back(',');
+      }
+      const size_t off = matrix_offset(matrix, r, c);
+      if (matrix->elem_kind == StyioMatrixElemKind::F64) {
+        auto* f64 = static_cast<StyioMatrixF64*>(matrix);
+        text += format_f64_literal(f64->elems[off]);
+      }
+      else {
+        auto* i64 = static_cast<StyioMatrixI64*>(matrix);
+        text += std::to_string(static_cast<long long>(i64->elems[off]));
+      }
+    }
+    text.push_back(']');
+  }
+  text.push_back(']');
+  out += text;
+}
+
 }  // namespace
 
 extern "C" DLLEXPORT int64_t
@@ -1191,7 +1962,7 @@ styio_file_open(const char* path) {
 
 extern "C" DLLEXPORT int64_t
 styio_file_open_auto(const char* path) {
-  /* M5: same as explicit file path for local filesystem paths. */
+  /* File resources: same as explicit file path for local filesystem paths. */
   return styio_file_open(path);
 }
 
@@ -1242,6 +2013,15 @@ styio_file_read_line(int64_t h) {
     buf[--n] = '\0';
   }
   return buf;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_file_read_i64line_from_handle(int64_t h) {
+  const char* line = styio_file_read_line(h);
+  if (line == nullptr) {
+    return 0;
+  }
+  return styio_cstr_to_i64(line);
 }
 
 extern "C" DLLEXPORT int64_t
@@ -1332,6 +2112,11 @@ styio_strcat_ab(const char* a, const char* b) {
   return p;
 }
 
+extern "C" DLLEXPORT const char*
+styio_clone_cstr(const char* s) {
+  return copy_to_owned_cstr(s == nullptr ? std::string() : std::string(s));
+}
+
 extern "C" DLLEXPORT void
 styio_free_cstr(const char* s) {
   if (s == nullptr) {
@@ -1347,6 +2132,7 @@ styio_free_cstr(const char* s) {
 
 thread_local char g_i64_dec_buf[32];
 thread_local char g_f64_dec_buf[64];
+thread_local char g_char_cstr_buf[2];
 
 extern "C" DLLEXPORT const char*
 styio_i64_dec_cstr(int64_t v) {
@@ -1368,45 +2154,66 @@ styio_f64_dec_cstr(double v) {
   return g_f64_dec_buf;
 }
 
+extern "C" DLLEXPORT const char*
+styio_char_cstr(int64_t v) {
+  g_char_cstr_buf[0] = static_cast<char>(static_cast<unsigned char>(v & 0xff));
+  g_char_cstr_buf[1] = '\0';
+  return g_char_cstr_buf;
+}
+
 extern "C" DLLEXPORT int
 styio_runtime_has_error() {
-  return g_runtime_error ? 1 : 0;
+  return styio::runtime::has_error() ? 1 : 0;
 }
 
 extern "C" DLLEXPORT const char*
 styio_runtime_last_error() {
-  if (!g_runtime_error || g_runtime_error_message.empty()) {
-    return nullptr;
-  }
-  return g_runtime_error_message.c_str();
+  return styio::runtime::last_error();
 }
 
 extern "C" DLLEXPORT const char*
 styio_runtime_last_error_subcode() {
-  if (!g_runtime_error || g_runtime_error_subcode.empty()) {
-    return nullptr;
-  }
-  return g_runtime_error_subcode.c_str();
+  return styio::runtime::last_error_subcode();
+}
+
+extern "C" DLLEXPORT int
+styio_runtime_error_matches_effect(const char* effect_name) {
+  return styio::runtime::error_matches_effect(effect_name) ? 1 : 0;
 }
 
 extern "C" DLLEXPORT void
 styio_runtime_clear_error() {
-  g_runtime_error = false;
-  g_runtime_error_message.clear();
-  g_runtime_error_subcode.clear();
+  clear_runtime_error_state();
 }
 
-/* M9: write a C-string to stderr with trailing newline and immediate flush.
+extern "C" DLLEXPORT void
+styio_runtime_set_log_sink(StyioRuntimeLogSink sink) {
+  styio::runtime::set_log_sink(sink);
+}
+
+/* Standard streams: write a C-string to stdout with trailing newline and immediate flush.
+   Null-safe (no-op for nullptr). */
+extern "C" DLLEXPORT void
+styio_stdout_write_cstr(const char* s) {
+  if (s != nullptr) {
+    std::fprintf(stdout, "%s\n", s);
+    std::fflush(stdout);
+    styio::runtime::log_to_sink("stdout", s);
+  }
+}
+
+/* Standard streams: write a C-string to stderr with trailing newline and immediate flush.
    Null-safe (no-op for nullptr). */
 extern "C" DLLEXPORT void
 styio_stderr_write_cstr(const char* s) {
   if (s != nullptr) {
     std::fprintf(stderr, "%s\n", s);
     std::fflush(stderr);
+    styio::runtime::log_to_sink("stderr", s);
   }
 }
 
-/* M10: read one line from stdin into a thread-local buffer.
+/* Stdio input: read one line from stdin into a thread-local buffer.
    Returns borrowed pointer (valid until next call on this thread).
    Returns nullptr on EOF. Strips trailing newline/CR. */
 thread_local char g_stdin_line_buf[65536];
@@ -1421,6 +2228,148 @@ styio_stdin_read_line() {
     g_stdin_line_buf[--n] = '\0';
   }
   return g_stdin_line_buf;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_i64_ready(int64_t value) {
+  auto* task = new StyioTask(StyioTaskValueKind::I64);
+  task->i64 = value;
+  task->ready.store(true, std::memory_order_release);
+  task_profile_inc(g_task_scheduler_profile_counters.ready_tasks);
+  return stash_task(task);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_f64_ready(double value) {
+  auto* task = new StyioTask(StyioTaskValueKind::F64);
+  task->f64 = value;
+  task->ready.store(true, std::memory_order_release);
+  task_profile_inc(g_task_scheduler_profile_counters.ready_tasks);
+  return stash_task(task);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_cstr_ready(const char* value) {
+  auto* task = new StyioTask(StyioTaskValueKind::String);
+  if (value != nullptr) {
+    task->str = value;
+  }
+  task->ready.store(true, std::memory_order_release);
+  task_profile_inc(g_task_scheduler_profile_counters.ready_tasks);
+  return stash_task(task);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_i64_spawn(int64_t (*fn)(void*), void* ctx) {
+  auto* task = new StyioTask(StyioTaskValueKind::I64);
+  task->i64_fn = fn;
+  task->ctx = ctx;
+  const int64_t handle = stash_task(task);
+  if (handle != 0) {
+    task_profile_inc(g_task_scheduler_profile_counters.spawned_tasks);
+    StyioTaskScheduler::instance().enqueue(task);
+  }
+  return handle;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_f64_spawn(double (*fn)(void*), void* ctx) {
+  auto* task = new StyioTask(StyioTaskValueKind::F64);
+  task->f64_fn = fn;
+  task->ctx = ctx;
+  const int64_t handle = stash_task(task);
+  if (handle != 0) {
+    task_profile_inc(g_task_scheduler_profile_counters.spawned_tasks);
+    StyioTaskScheduler::instance().enqueue(task);
+  }
+  return handle;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_cstr_spawn(const char* (*fn)(void*), void* ctx) {
+  auto* task = new StyioTask(StyioTaskValueKind::String);
+  task->cstr_fn = fn;
+  task->ctx = ctx;
+  const int64_t handle = stash_task(task);
+  if (handle != 0) {
+    task_profile_inc(g_task_scheduler_profile_counters.spawned_tasks);
+    StyioTaskScheduler::instance().enqueue(task);
+  }
+  return handle;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_i64_pull(int64_t h) {
+  StyioTask* task = as_task_for_pull(h, StyioTaskValueKind::I64);
+  if (task == nullptr) {
+    return 0;
+  }
+  return task->i64;
+}
+
+extern "C" DLLEXPORT double
+styio_task_f64_pull(int64_t h) {
+  StyioTask* task = as_task_for_pull(h, StyioTaskValueKind::F64);
+  if (task == nullptr) {
+    return 0.0;
+  }
+  return task->f64;
+}
+
+extern "C" DLLEXPORT const char*
+styio_task_cstr_pull(int64_t h) {
+  StyioTask* task = as_task_for_pull(h, StyioTaskValueKind::String);
+  if (task == nullptr) {
+    return "";
+  }
+  return task->str.c_str();
+}
+
+extern "C" DLLEXPORT void
+styio_task_release(int64_t h) {
+  (void)g_handle_table.release(h, StyioHandleTable::HandleKind::Task, close_task);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_active_count() {
+  return g_active_task_handles;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_task_worker_count() {
+  return static_cast<int64_t>(StyioTaskScheduler::instance().worker_count());
+}
+
+extern "C" DLLEXPORT void
+styio_task_scheduler_profile_reset() {
+  g_task_scheduler_profile_counters.reset();
+}
+
+extern "C" DLLEXPORT void
+styio_task_scheduler_profile_enable(int enabled) {
+  g_task_scheduler_profile_enabled.store(enabled != 0, std::memory_order_relaxed);
+}
+
+extern "C" DLLEXPORT void
+styio_task_scheduler_profile_snapshot(StyioTaskSchedulerProfileSnapshot* out) {
+  if (out == nullptr) {
+    return;
+  }
+  out->enabled = task_scheduler_profile_enabled() ? 1 : 0;
+  out->worker_count = static_cast<int64_t>(StyioTaskScheduler::instance().current_worker_count());
+  out->active_tasks = g_active_task_handles;
+  out->ready_tasks = g_task_scheduler_profile_counters.ready_tasks.load(std::memory_order_relaxed);
+  out->spawned_tasks = g_task_scheduler_profile_counters.spawned_tasks.load(std::memory_order_relaxed);
+  out->enqueued_tasks = g_task_scheduler_profile_counters.enqueued_tasks.load(std::memory_order_relaxed);
+  out->started_tasks = g_task_scheduler_profile_counters.started_tasks.load(std::memory_order_relaxed);
+  out->completed_tasks = g_task_scheduler_profile_counters.completed_tasks.load(std::memory_order_relaxed);
+  out->pulled_tasks = g_task_scheduler_profile_counters.pulled_tasks.load(std::memory_order_relaxed);
+  out->released_tasks = g_task_scheduler_profile_counters.released_tasks.load(std::memory_order_relaxed);
+  out->fast_ready_pulls = g_task_scheduler_profile_counters.fast_ready_pulls.load(std::memory_order_relaxed);
+  out->blocking_pulls = g_task_scheduler_profile_counters.blocking_pulls.load(std::memory_order_relaxed);
+  out->failed_pulls = g_task_scheduler_profile_counters.failed_pulls.load(std::memory_order_relaxed);
+  out->invalid_pulls = g_task_scheduler_profile_counters.invalid_pulls.load(std::memory_order_relaxed);
+  out->max_queue_depth = g_task_scheduler_profile_counters.max_queue_depth.load(std::memory_order_relaxed);
 }
 
 extern "C" DLLEXPORT int64_t
@@ -1439,6 +2388,21 @@ styio_list_i64_read_stdin() {
 }
 
 extern "C" DLLEXPORT int64_t
+styio_list_f64_read_stdin() {
+  std::vector<double> values;
+  std::string input = read_all_stdin();
+  if (!parse_f64_list_literal(input, values)) {
+    set_runtime_error_once(
+      kRuntimeSubcodeListParse,
+      "stdin does not contain a valid Styio f64 list literal");
+    return 0;
+  }
+  auto* list = new StyioListF64();
+  list->elems = std::move(values);
+  return stash_list(list);
+}
+
+extern "C" DLLEXPORT int64_t
 styio_list_cstr_read_stdin() {
   auto* list = new StyioListString();
   char line_buf[65536];
@@ -1448,6 +2412,35 @@ styio_list_cstr_read_stdin() {
       line_buf[--n] = '\0';
     }
     list->elems.emplace_back(line_buf);
+  }
+  return stash_list(list);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_string_lines(const char* text) {
+  auto* list = new StyioListString();
+  if (text == nullptr || text[0] == '\0') {
+    return stash_list(list);
+  }
+
+  std::string current;
+  bool ended_with_separator = false;
+  for (size_t i = 0; text[i] != '\0'; ++i) {
+    char ch = text[i];
+    if (ch == '\n' || ch == '\r') {
+      list->elems.push_back(current);
+      current.clear();
+      ended_with_separator = true;
+      if (ch == '\r' && text[i + 1] == '\n') {
+        ++i;
+      }
+      continue;
+    }
+    current.push_back(ch);
+    ended_with_separator = false;
+  }
+  if (!ended_with_separator) {
+    list->elems.push_back(current);
   }
   return stash_list(list);
 }
@@ -1470,6 +2463,38 @@ check_list_index(size_t size, int64_t idx, bool allow_end = false) {
   return true;
 }
 
+bool
+check_list_slice_bounds(
+  size_t size,
+  int64_t start,
+  int64_t end_exclusive,
+  bool has_end,
+  size_t& begin,
+  size_t& finish
+) {
+  if (start < 0) {
+    set_runtime_error_once(
+      kRuntimeSubcodeListIndex,
+      "list slice start out of range: " + std::to_string(static_cast<long long>(start)));
+    return false;
+  }
+  if (has_end && end_exclusive < 0) {
+    set_runtime_error_once(
+      kRuntimeSubcodeListIndex,
+      "list slice end out of range: " + std::to_string(static_cast<long long>(end_exclusive)));
+    return false;
+  }
+  const size_t pos_start = static_cast<size_t>(start);
+  const size_t pos_end = has_end ? static_cast<size_t>(end_exclusive) : size;
+  if (pos_start > size || pos_end > size || pos_end < pos_start) {
+    set_runtime_error_once(kRuntimeSubcodeListIndex, "list slice bounds out of range");
+    return false;
+  }
+  begin = pos_start;
+  finish = pos_end;
+  return true;
+}
+
 template <typename ListT, typename ValueT>
 void
 list_insert_value(ListT* list, int64_t idx, ValueT&& value) {
@@ -1488,9 +2513,30 @@ list_set_value(ListT* list, int64_t idx, ValueT&& value) {
   list->elems[static_cast<size_t>(idx)] = std::forward<ValueT>(value);
 }
 
+template <typename ListT>
+int64_t
+slice_plain_list(ListT* list, int64_t start, int64_t end_exclusive, bool has_end) {
+  if (list == nullptr) {
+    return 0;
+  }
+  size_t begin = 0;
+  size_t finish = 0;
+  if (!check_list_slice_bounds(list->elems.size(), start, end_exclusive, has_end, begin, finish)) {
+    return 0;
+  }
+  auto* out = new ListT();
+  out->elems.assign(list->elems.begin() + begin, list->elems.begin() + finish);
+  return stash_list(out);
+}
+
 extern "C" DLLEXPORT int64_t
 styio_list_new_bool() {
   return stash_list(new StyioListBool());
+}
+
+extern "C" DLLEXPORT int64_t
+styio_list_new_char() {
+  return stash_list(new StyioListChar());
 }
 
 extern "C" DLLEXPORT int64_t
@@ -1518,11 +2564,24 @@ styio_list_new_dict() {
   return stash_list(new StyioListDictHandle());
 }
 
+extern "C" DLLEXPORT int64_t
+styio_list_new_matrix() {
+  return stash_list(new StyioListMatrixHandle());
+}
+
 extern "C" DLLEXPORT void
 styio_list_push_bool(int64_t h, int64_t value) {
   StyioListBool* list = as_list_bool(h, true);
   if (list != nullptr) {
     list->elems.push_back(value != 0 ? 1 : 0);
+  }
+}
+
+extern "C" DLLEXPORT void
+styio_list_push_char(int64_t h, int8_t value) {
+  StyioListChar* list = as_list_char(h, true);
+  if (list != nullptr) {
+    list->elems.push_back(value);
   }
 }
 
@@ -1567,10 +2626,26 @@ styio_list_push_dict(int64_t h, int64_t value) {
 }
 
 extern "C" DLLEXPORT void
+styio_list_push_matrix(int64_t h, int64_t value) {
+  StyioListMatrixHandle* list = as_list_matrix_handle(h, true);
+  if (list != nullptr) {
+    list->elems.push_back(clone_matrix_handle_value(value));
+  }
+}
+
+extern "C" DLLEXPORT void
 styio_list_insert_bool(int64_t h, int64_t idx, int64_t value) {
   StyioListBool* list = as_list_bool(h, true);
   if (list != nullptr) {
     list_insert_value(list, idx, value != 0 ? 1 : 0);
+  }
+}
+
+extern "C" DLLEXPORT void
+styio_list_insert_char(int64_t h, int64_t idx, int8_t value) {
+  StyioListChar* list = as_list_char(h, true);
+  if (list != nullptr) {
+    list_insert_value(list, idx, value);
   }
 }
 
@@ -1620,6 +2695,17 @@ styio_list_insert_dict(int64_t h, int64_t idx, int64_t value) {
     clone_dict_handle_value(value));
 }
 
+extern "C" DLLEXPORT void
+styio_list_insert_matrix(int64_t h, int64_t idx, int64_t value) {
+  StyioListMatrixHandle* list = as_list_matrix_handle(h, true);
+  if (list == nullptr || !check_list_index(list->elems.size(), idx, true)) {
+    return;
+  }
+  list->elems.insert(
+    list->elems.begin() + static_cast<size_t>(idx),
+    clone_matrix_handle_value(value));
+}
+
 extern "C" DLLEXPORT int64_t
 styio_list_clone(int64_t h) {
   return clone_list_handle_value(h);
@@ -1634,6 +2720,9 @@ styio_list_len(int64_t h) {
   if (list->elem_kind == StyioListElemKind::Bool) {
     return static_cast<int64_t>(static_cast<StyioListBool*>(list)->elems.size());
   }
+  if (list->elem_kind == StyioListElemKind::Char) {
+    return static_cast<int64_t>(static_cast<StyioListChar*>(list)->elems.size());
+  }
   if (list->elem_kind == StyioListElemKind::I64) {
     return static_cast<int64_t>(static_cast<StyioListI64*>(list)->elems.size());
   }
@@ -1646,7 +2735,10 @@ styio_list_len(int64_t h) {
   if (list->elem_kind == StyioListElemKind::ListHandle) {
     return static_cast<int64_t>(static_cast<StyioListListHandle*>(list)->elems.size());
   }
-  return static_cast<int64_t>(static_cast<StyioListDictHandle*>(list)->elems.size());
+  if (list->elem_kind == StyioListElemKind::DictHandle) {
+    return static_cast<int64_t>(static_cast<StyioListDictHandle*>(list)->elems.size());
+  }
+  return static_cast<int64_t>(static_cast<StyioListMatrixHandle*>(list)->elems.size());
 }
 
 extern "C" DLLEXPORT int64_t
@@ -1659,6 +2751,18 @@ styio_list_get_bool(int64_t h, int64_t idx) {
     return 0;
   }
   return list->elems[static_cast<size_t>(idx)] != 0 ? 1 : 0;
+}
+
+extern "C" DLLEXPORT int8_t
+styio_list_get_char(int64_t h, int64_t idx) {
+  StyioListChar* list = as_list_char(h, true);
+  if (list == nullptr) {
+    return 0;
+  }
+  if (!check_list_index(list->elems.size(), idx, false)) {
+    return 0;
+  }
+  return list->elems[static_cast<size_t>(idx)];
 }
 
 extern "C" DLLEXPORT int64_t
@@ -1721,11 +2825,100 @@ styio_list_get_dict(int64_t h, int64_t idx) {
   return clone_dict_handle_value(list->elems[static_cast<size_t>(idx)]);
 }
 
+extern "C" DLLEXPORT int64_t
+styio_list_get_matrix(int64_t h, int64_t idx) {
+  StyioListMatrixHandle* list = as_list_matrix_handle(h, true);
+  if (list == nullptr) {
+    return 0;
+  }
+  if (!check_list_index(list->elems.size(), idx, false)) {
+    return 0;
+  }
+  return clone_matrix_handle_value(list->elems[static_cast<size_t>(idx)]);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_list_slice(int64_t h, int64_t start, int64_t end_exclusive, int32_t has_end) {
+  StyioListBase* list = as_list_base(h, true);
+  if (list == nullptr) {
+    return 0;
+  }
+  const bool bounded_end = has_end != 0;
+  switch (list->elem_kind) {
+    case StyioListElemKind::Bool:
+      return slice_plain_list(
+        static_cast<StyioListBool*>(list), start, end_exclusive, bounded_end);
+    case StyioListElemKind::Char:
+      return slice_plain_list(
+        static_cast<StyioListChar*>(list), start, end_exclusive, bounded_end);
+    case StyioListElemKind::I64:
+      return slice_plain_list(
+        static_cast<StyioListI64*>(list), start, end_exclusive, bounded_end);
+    case StyioListElemKind::F64:
+      return slice_plain_list(
+        static_cast<StyioListF64*>(list), start, end_exclusive, bounded_end);
+    case StyioListElemKind::String:
+      return slice_plain_list(
+        static_cast<StyioListString*>(list), start, end_exclusive, bounded_end);
+    case StyioListElemKind::ListHandle: {
+      auto* src = static_cast<StyioListListHandle*>(list);
+      size_t begin = 0;
+      size_t finish = 0;
+      if (!check_list_slice_bounds(src->elems.size(), start, end_exclusive, bounded_end, begin, finish)) {
+        return 0;
+      }
+      auto* out = new StyioListListHandle();
+      out->elems.reserve(finish - begin);
+      for (size_t i = begin; i < finish; ++i) {
+        out->elems.push_back(clone_list_handle_value(src->elems[i]));
+      }
+      return stash_list(out);
+    }
+    case StyioListElemKind::DictHandle: {
+      auto* src = static_cast<StyioListDictHandle*>(list);
+      size_t begin = 0;
+      size_t finish = 0;
+      if (!check_list_slice_bounds(src->elems.size(), start, end_exclusive, bounded_end, begin, finish)) {
+        return 0;
+      }
+      auto* out = new StyioListDictHandle();
+      out->elems.reserve(finish - begin);
+      for (size_t i = begin; i < finish; ++i) {
+        out->elems.push_back(clone_dict_handle_value(src->elems[i]));
+      }
+      return stash_list(out);
+    }
+    case StyioListElemKind::MatrixHandle: {
+      auto* src = static_cast<StyioListMatrixHandle*>(list);
+      size_t begin = 0;
+      size_t finish = 0;
+      if (!check_list_slice_bounds(src->elems.size(), start, end_exclusive, bounded_end, begin, finish)) {
+        return 0;
+      }
+      auto* out = new StyioListMatrixHandle();
+      out->elems.reserve(finish - begin);
+      for (size_t i = begin; i < finish; ++i) {
+        out->elems.push_back(clone_matrix_handle_value(src->elems[i]));
+      }
+      return stash_list(out);
+    }
+  }
+  return 0;
+}
+
 extern "C" DLLEXPORT void
 styio_list_set_bool(int64_t h, int64_t idx, int64_t value) {
   StyioListBool* list = as_list_bool(h, true);
   if (list != nullptr) {
     list_set_value(list, idx, value != 0 ? 1 : 0);
+  }
+}
+
+extern "C" DLLEXPORT void
+styio_list_set_char(int64_t h, int64_t idx, int8_t value) {
+  StyioListChar* list = as_list_char(h, true);
+  if (list != nullptr) {
+    list_set_value(list, idx, value);
   }
 }
 
@@ -1778,6 +2971,18 @@ styio_list_set_dict(int64_t h, int64_t idx, int64_t value) {
 }
 
 extern "C" DLLEXPORT void
+styio_list_set_matrix(int64_t h, int64_t idx, int64_t value) {
+  StyioListMatrixHandle* list = as_list_matrix_handle(h, true);
+  if (list == nullptr || !check_list_index(list->elems.size(), idx, false)) {
+    return;
+  }
+  const size_t pos = static_cast<size_t>(idx);
+  int64_t stored = clone_matrix_handle_value(value);
+  (void)g_handle_table.release(list->elems[pos], StyioHandleTable::HandleKind::Matrix, close_matrix);
+  list->elems[pos] = stored;
+}
+
+extern "C" DLLEXPORT void
 styio_list_pop(int64_t h) {
   StyioListBase* list = as_list_base(h, true);
   if (list == nullptr) {
@@ -1787,6 +2992,14 @@ styio_list_pop(int64_t h) {
   switch (list->elem_kind) {
     case StyioListElemKind::Bool: {
       auto* values = static_cast<StyioListBool*>(list);
+      if (values->elems.empty()) {
+        break;
+      }
+      values->elems.pop_back();
+      popped = true;
+    } break;
+    case StyioListElemKind::Char: {
+      auto* values = static_cast<StyioListChar*>(list);
       if (values->elems.empty()) {
         break;
       }
@@ -1837,6 +3050,16 @@ styio_list_pop(int64_t h) {
       (void)g_handle_table.release(removed, StyioHandleTable::HandleKind::Dict, close_dict);
       popped = true;
     } break;
+    case StyioListElemKind::MatrixHandle: {
+      auto* values = static_cast<StyioListMatrixHandle*>(list);
+      if (values->elems.empty()) {
+        break;
+      }
+      int64_t removed = values->elems.back();
+      values->elems.pop_back();
+      (void)g_handle_table.release(removed, StyioHandleTable::HandleKind::Matrix, close_matrix);
+      popped = true;
+    } break;
   }
   if (!popped) {
     set_runtime_error_once(kRuntimeSubcodeListIndex, "list pop on empty list");
@@ -1862,6 +3085,509 @@ styio_list_release(int64_t h) {
 extern "C" DLLEXPORT int64_t
 styio_list_active_count() {
   return g_active_list_handles;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_new_i64(int64_t rows, int64_t cols) {
+  if (!check_matrix_dims(rows, cols)) {
+    return 0;
+  }
+  return stash_matrix(new StyioMatrixI64(rows, cols));
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_new_f64(int64_t rows, int64_t cols) {
+  if (!check_matrix_dims(rows, cols)) {
+    return 0;
+  }
+  return stash_matrix(new StyioMatrixF64(rows, cols));
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_identity_i64(int64_t n) {
+  int64_t h = styio_matrix_new_i64(n, n);
+  auto* m = as_matrix_i64(h, false);
+  if (m != nullptr) {
+    for (int64_t i = 0; i < n; ++i) {
+      m->elems[matrix_offset(m, i, i)] = 1;
+    }
+  }
+  return h;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_identity_f64(int64_t n) {
+  int64_t h = styio_matrix_new_f64(n, n);
+  auto* m = as_matrix_f64(h, false);
+  if (m != nullptr) {
+    for (int64_t i = 0; i < n; ++i) {
+      m->elems[matrix_offset(m, i, i)] = 1.0;
+    }
+  }
+  return h;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_clone_i64(int64_t h) {
+  return clone_matrix(as_matrix_i64(h, true));
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_clone(int64_t h) {
+  return clone_matrix_handle_value(h);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_clone_f64(int64_t h) {
+  StyioMatrixBase* base = as_matrix_base(h, true);
+  if (base == nullptr) {
+    return 0;
+  }
+  auto* out = new StyioMatrixF64(base->rows, base->cols);
+  for (int64_t i = 0; i < base->rows * base->cols; ++i) {
+    out->elems[static_cast<size_t>(i)] =
+      base->elem_kind == StyioMatrixElemKind::F64
+        ? static_cast<StyioMatrixF64*>(base)->elems[static_cast<size_t>(i)]
+        : static_cast<double>(static_cast<StyioMatrixI64*>(base)->elems[static_cast<size_t>(i)]);
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_rows(int64_t h) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  return m != nullptr ? m->rows : 0;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_cols(int64_t h) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  return m != nullptr ? m->cols : 0;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_shape(int64_t h) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  if (m == nullptr) {
+    return 0;
+  }
+  auto* out = new StyioListI64();
+  out->elems.push_back(m->rows);
+  out->elems.push_back(m->cols);
+  return stash_list(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_get_i64(int64_t h, int64_t row, int64_t col) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  if (m == nullptr || !check_matrix_index(m, row, col)) {
+    return 0;
+  }
+  return m->elems[matrix_offset(m, row, col)];
+}
+
+extern "C" DLLEXPORT double
+styio_matrix_get_f64(int64_t h, int64_t row, int64_t col) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  if (m == nullptr || !check_matrix_index(m, row, col)) {
+    return 0.0;
+  }
+  const size_t off = matrix_offset(m, row, col);
+  return m->elem_kind == StyioMatrixElemKind::F64
+    ? static_cast<StyioMatrixF64*>(m)->elems[off]
+    : static_cast<double>(static_cast<StyioMatrixI64*>(m)->elems[off]);
+}
+
+extern "C" DLLEXPORT void
+styio_matrix_set_i64(int64_t h, int64_t row, int64_t col, int64_t value) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  if (m == nullptr || !check_matrix_index(m, row, col)) {
+    return;
+  }
+  m->elems[matrix_offset(m, row, col)] = value;
+}
+
+extern "C" DLLEXPORT void
+styio_matrix_set_f64(int64_t h, int64_t row, int64_t col, double value) {
+  StyioMatrixF64* m = as_matrix_f64(h, true);
+  if (m == nullptr || !check_matrix_index(m, row, col)) {
+    return;
+  }
+  m->elems[matrix_offset(m, row, col)] = value;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_row_i64(int64_t h, int64_t row) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  if (m == nullptr || !check_matrix_index(m, row, 0)) {
+    return 0;
+  }
+  auto* out = new StyioListI64();
+  for (int64_t col = 0; col < m->cols; ++col) {
+    out->elems.push_back(m->elems[matrix_offset(m, row, col)]);
+  }
+  return stash_list(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_row_f64(int64_t h, int64_t row) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  if (m == nullptr || !check_matrix_index(m, row, 0)) {
+    return 0;
+  }
+  auto* out = new StyioListF64();
+  for (int64_t col = 0; col < m->cols; ++col) {
+    out->elems.push_back(styio_matrix_get_f64(h, row, col));
+  }
+  return stash_list(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_rows_slice_i64(int64_t h, int64_t start, int64_t end_exclusive, int32_t has_end) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  int64_t begin = 0;
+  int64_t finish = 0;
+  if (m == nullptr
+      || !check_matrix_row_slice_bounds(m, start, end_exclusive, has_end != 0, begin, finish)) {
+    return 0;
+  }
+  auto* out = new StyioListListHandle();
+  out->elems.reserve(static_cast<size_t>(finish - begin));
+  for (int64_t row = begin; row < finish; ++row) {
+    auto* row_list = new StyioListI64();
+    row_list->elems.reserve(static_cast<size_t>(m->cols));
+    for (int64_t col = 0; col < m->cols; ++col) {
+      row_list->elems.push_back(m->elems[matrix_offset(m, row, col)]);
+    }
+    out->elems.push_back(stash_list(row_list));
+  }
+  return stash_list(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_rows_slice_f64(int64_t h, int64_t start, int64_t end_exclusive, int32_t has_end) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  int64_t begin = 0;
+  int64_t finish = 0;
+  if (m == nullptr
+      || !check_matrix_row_slice_bounds(m, start, end_exclusive, has_end != 0, begin, finish)) {
+    return 0;
+  }
+  auto* out = new StyioListListHandle();
+  out->elems.reserve(static_cast<size_t>(finish - begin));
+  for (int64_t row = begin; row < finish; ++row) {
+    auto* row_list = new StyioListF64();
+    row_list->elems.reserve(static_cast<size_t>(m->cols));
+    for (int64_t col = 0; col < m->cols; ++col) {
+      const size_t off = matrix_offset(m, row, col);
+      row_list->elems.push_back(
+        m->elem_kind == StyioMatrixElemKind::F64
+          ? static_cast<StyioMatrixF64*>(m)->elems[off]
+          : static_cast<double>(static_cast<StyioMatrixI64*>(m)->elems[off]));
+    }
+    out->elems.push_back(stash_list(row_list));
+  }
+  return stash_list(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_add_i64(int64_t lhs, int64_t rhs) {
+  StyioMatrixI64* a = as_matrix_i64(lhs, true);
+  StyioMatrixI64* b = as_matrix_i64(rhs, true);
+  if (a == nullptr || b == nullptr || !same_matrix_shape(a, b)) {
+    return 0;
+  }
+  auto* out = new StyioMatrixI64(a->rows, a->cols);
+  for (size_t i = 0; i < a->elems.size(); ++i) {
+    out->elems[i] = a->elems[i] + b->elems[i];
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_add_f64(int64_t lhs, int64_t rhs) {
+  StyioMatrixBase* a = as_matrix_base(lhs, true);
+  StyioMatrixBase* b = as_matrix_base(rhs, true);
+  if (a == nullptr || b == nullptr || !same_matrix_shape(a, b)) {
+    return 0;
+  }
+  auto* out = new StyioMatrixF64(a->rows, a->cols);
+  for (int64_t i = 0; i < a->rows * a->cols; ++i) {
+    double av = a->elem_kind == StyioMatrixElemKind::F64
+      ? static_cast<StyioMatrixF64*>(a)->elems[static_cast<size_t>(i)]
+      : static_cast<double>(static_cast<StyioMatrixI64*>(a)->elems[static_cast<size_t>(i)]);
+    double bv = b->elem_kind == StyioMatrixElemKind::F64
+      ? static_cast<StyioMatrixF64*>(b)->elems[static_cast<size_t>(i)]
+      : static_cast<double>(static_cast<StyioMatrixI64*>(b)->elems[static_cast<size_t>(i)]);
+    out->elems[static_cast<size_t>(i)] = av + bv;
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_sub_i64(int64_t lhs, int64_t rhs) {
+  StyioMatrixI64* a = as_matrix_i64(lhs, true);
+  StyioMatrixI64* b = as_matrix_i64(rhs, true);
+  if (a == nullptr || b == nullptr || !same_matrix_shape(a, b)) {
+    return 0;
+  }
+  auto* out = new StyioMatrixI64(a->rows, a->cols);
+  for (size_t i = 0; i < a->elems.size(); ++i) {
+    out->elems[i] = a->elems[i] - b->elems[i];
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_sub_f64(int64_t lhs, int64_t rhs) {
+  int64_t neg = styio_matrix_scale_f64(rhs, -1.0);
+  int64_t out = styio_matrix_add_f64(lhs, neg);
+  styio_matrix_release(neg);
+  return out;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_hadamard_i64(int64_t lhs, int64_t rhs) {
+  StyioMatrixI64* a = as_matrix_i64(lhs, true);
+  StyioMatrixI64* b = as_matrix_i64(rhs, true);
+  if (a == nullptr || b == nullptr || !same_matrix_shape(a, b)) {
+    return 0;
+  }
+  auto* out = new StyioMatrixI64(a->rows, a->cols);
+  for (size_t i = 0; i < a->elems.size(); ++i) {
+    out->elems[i] = a->elems[i] * b->elems[i];
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_hadamard_f64(int64_t lhs, int64_t rhs) {
+  StyioMatrixBase* a = as_matrix_base(lhs, true);
+  StyioMatrixBase* b = as_matrix_base(rhs, true);
+  if (a == nullptr || b == nullptr || !same_matrix_shape(a, b)) {
+    return 0;
+  }
+  auto* out = new StyioMatrixF64(a->rows, a->cols);
+  for (int64_t i = 0; i < a->rows * a->cols; ++i) {
+    double av = a->elem_kind == StyioMatrixElemKind::F64
+      ? static_cast<StyioMatrixF64*>(a)->elems[static_cast<size_t>(i)]
+      : static_cast<double>(static_cast<StyioMatrixI64*>(a)->elems[static_cast<size_t>(i)]);
+    double bv = b->elem_kind == StyioMatrixElemKind::F64
+      ? static_cast<StyioMatrixF64*>(b)->elems[static_cast<size_t>(i)]
+      : static_cast<double>(static_cast<StyioMatrixI64*>(b)->elems[static_cast<size_t>(i)]);
+    out->elems[static_cast<size_t>(i)] = av * bv;
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_matmul_i64(int64_t lhs, int64_t rhs) {
+  StyioMatrixI64* a = as_matrix_i64(lhs, true);
+  StyioMatrixI64* b = as_matrix_i64(rhs, true);
+  if (a == nullptr || b == nullptr) {
+    return 0;
+  }
+  if (a->cols != b->rows) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixShape, "matrix multiplication shape mismatch");
+    return 0;
+  }
+  auto* out = new StyioMatrixI64(a->rows, b->cols);
+  for (int64_t r = 0; r < a->rows; ++r) {
+    for (int64_t c = 0; c < b->cols; ++c) {
+      int64_t sum = 0;
+      for (int64_t k = 0; k < a->cols; ++k) {
+        sum += a->elems[matrix_offset(a, r, k)] * b->elems[matrix_offset(b, k, c)];
+      }
+      out->elems[matrix_offset(out, r, c)] = sum;
+    }
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_matmul_f64(int64_t lhs, int64_t rhs) {
+  StyioMatrixBase* a = as_matrix_base(lhs, true);
+  StyioMatrixBase* b = as_matrix_base(rhs, true);
+  if (a == nullptr || b == nullptr) {
+    return 0;
+  }
+  if (a->cols != b->rows) {
+    set_runtime_error_once(kRuntimeSubcodeMatrixShape, "matrix multiplication shape mismatch");
+    return 0;
+  }
+  auto* out = new StyioMatrixF64(a->rows, b->cols);
+  for (int64_t r = 0; r < a->rows; ++r) {
+    for (int64_t c = 0; c < b->cols; ++c) {
+      double sum = 0.0;
+      for (int64_t k = 0; k < a->cols; ++k) {
+        sum += styio_matrix_get_f64(lhs, r, k) * styio_matrix_get_f64(rhs, k, c);
+      }
+      out->elems[matrix_offset(out, r, c)] = sum;
+    }
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_scale_i64(int64_t h, int64_t scalar) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  if (m == nullptr) {
+    return 0;
+  }
+  auto* out = new StyioMatrixI64(m->rows, m->cols);
+  for (size_t i = 0; i < m->elems.size(); ++i) {
+    out->elems[i] = m->elems[i] * scalar;
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_scale_f64(int64_t h, double scalar) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  if (m == nullptr) {
+    return 0;
+  }
+  auto* out = new StyioMatrixF64(m->rows, m->cols);
+  for (int64_t i = 0; i < m->rows * m->cols; ++i) {
+    double v = m->elem_kind == StyioMatrixElemKind::F64
+      ? static_cast<StyioMatrixF64*>(m)->elems[static_cast<size_t>(i)]
+      : static_cast<double>(static_cast<StyioMatrixI64*>(m)->elems[static_cast<size_t>(i)]);
+    out->elems[static_cast<size_t>(i)] = v * scalar;
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_transpose_i64(int64_t h) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  if (m == nullptr) {
+    return 0;
+  }
+  auto* out = new StyioMatrixI64(m->cols, m->rows);
+  for (int64_t r = 0; r < m->rows; ++r) {
+    for (int64_t c = 0; c < m->cols; ++c) {
+      out->elems[matrix_offset(out, c, r)] = m->elems[matrix_offset(m, r, c)];
+    }
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_transpose_f64(int64_t h) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  if (m == nullptr) {
+    return 0;
+  }
+  auto* out = new StyioMatrixF64(m->cols, m->rows);
+  for (int64_t r = 0; r < m->rows; ++r) {
+    for (int64_t c = 0; c < m->cols; ++c) {
+      out->elems[matrix_offset(out, c, r)] = styio_matrix_get_f64(h, r, c);
+    }
+  }
+  return stash_matrix(out);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_dot_i64(int64_t lhs, int64_t rhs) {
+  StyioMatrixI64* a = as_matrix_i64(lhs, true);
+  StyioMatrixI64* b = as_matrix_i64(rhs, true);
+  if (a == nullptr || b == nullptr || !same_matrix_shape(a, b)) {
+    return 0;
+  }
+  int64_t sum = 0;
+  for (size_t i = 0; i < a->elems.size(); ++i) {
+    sum += a->elems[i] * b->elems[i];
+  }
+  return sum;
+}
+
+extern "C" DLLEXPORT double
+styio_matrix_dot_f64(int64_t lhs, int64_t rhs) {
+  StyioMatrixBase* a = as_matrix_base(lhs, true);
+  StyioMatrixBase* b = as_matrix_base(rhs, true);
+  if (a == nullptr || b == nullptr || !same_matrix_shape(a, b)) {
+    return 0.0;
+  }
+  double sum = 0.0;
+  for (int64_t r = 0; r < a->rows; ++r) {
+    for (int64_t c = 0; c < a->cols; ++c) {
+      sum += styio_matrix_get_f64(lhs, r, c) * styio_matrix_get_f64(rhs, r, c);
+    }
+  }
+  return sum;
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_sum_i64(int64_t h) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  if (m == nullptr) {
+    return 0;
+  }
+  int64_t sum = 0;
+  for (int64_t v : m->elems) {
+    sum += v;
+  }
+  return sum;
+}
+
+extern "C" DLLEXPORT double
+styio_matrix_sum_f64(int64_t h) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  if (m == nullptr) {
+    return 0.0;
+  }
+  double sum = 0.0;
+  for (int64_t r = 0; r < m->rows; ++r) {
+    for (int64_t c = 0; c < m->cols; ++c) {
+      sum += styio_matrix_get_f64(h, r, c);
+    }
+  }
+  return sum;
+}
+
+extern "C" DLLEXPORT double
+styio_matrix_norm(int64_t h) {
+  StyioMatrixBase* m = as_matrix_base(h, true);
+  if (m == nullptr) {
+    return 0.0;
+  }
+  double sum = 0.0;
+  for (int64_t r = 0; r < m->rows; ++r) {
+    for (int64_t c = 0; c < m->cols; ++c) {
+      double v = styio_matrix_get_f64(h, r, c);
+      sum += v * v;
+    }
+  }
+  return std::sqrt(sum);
+}
+
+extern "C" DLLEXPORT int64_t*
+styio_matrix_data_i64(int64_t h) {
+  StyioMatrixI64* m = as_matrix_i64(h, true);
+  return m != nullptr ? m->elems.data() : nullptr;
+}
+
+extern "C" DLLEXPORT double*
+styio_matrix_data_f64(int64_t h) {
+  StyioMatrixF64* m = as_matrix_f64(h, true);
+  return m != nullptr ? m->elems.data() : nullptr;
+}
+
+extern "C" DLLEXPORT const char*
+styio_matrix_to_cstr(int64_t h) {
+  std::string text;
+  append_matrix_handle_repr(text, h);
+  return copy_to_owned_cstr(text);
+}
+
+extern "C" DLLEXPORT void
+styio_matrix_release(int64_t h) {
+  (void)g_handle_table.release(h, StyioHandleTable::HandleKind::Matrix, close_matrix);
+}
+
+extern "C" DLLEXPORT int64_t
+styio_matrix_active_count() {
+  return g_active_matrix_handles;
 }
 
 extern "C" DLLEXPORT int64_t

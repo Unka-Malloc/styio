@@ -49,41 +49,191 @@ public:
       MainJD(this->ES->createBareJITDylib("<main>")) {
     MainJD.addGenerator(llvm::cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(DL.getGlobalPrefix())));
 
-    auto err = MainJD.define(llvm::orc::absoluteSymbols(llvm::orc::SymbolMap({
-      { Mangle("something"), { llvm::orc::ExecutorAddr::fromPtr(&something), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_file_open"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_file_open), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_file_open_auto"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_file_open_auto), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_file_open_write"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_file_open_write), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_file_close"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_file_close), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_file_rewind"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_file_rewind), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_file_read_line"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_file_read_line), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_file_write_cstr"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_file_write_cstr), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_cstr_to_i64"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_cstr_to_i64), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_cstr_to_f64"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_cstr_to_f64), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_read_file_i64line"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_read_file_i64line), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_strcat_ab"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_strcat_ab), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_free_cstr"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_free_cstr), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_i64_dec_cstr"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_i64_dec_cstr), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_f64_dec_cstr"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_f64_dec_cstr), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_stderr_write_cstr"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_stderr_write_cstr), llvm::JITSymbolFlags::Callable } },
-      { Mangle("styio_stdin_read_line"),
-        { llvm::orc::ExecutorAddr::fromPtr(&styio_stdin_read_line), llvm::JITSymbolFlags::Callable } },
-    })));
+    llvm::orc::SymbolMap runtime_symbols;
+    auto add_symbol = [&](const char* name, auto* fn)
+    {
+      runtime_symbols[Mangle(name)] = {
+        llvm::orc::ExecutorAddr::fromPtr(fn),
+        llvm::JITSymbolFlags::Callable,
+      };
+    };
+
+    add_symbol("something", &something);
+    add_symbol("styio_file_open", &styio_file_open);
+    add_symbol("styio_file_open_auto", &styio_file_open_auto);
+    add_symbol("styio_file_open_write", &styio_file_open_write);
+    add_symbol("styio_file_close", &styio_file_close);
+    add_symbol("styio_file_rewind", &styio_file_rewind);
+    add_symbol("styio_file_read_line", &styio_file_read_line);
+    add_symbol("styio_file_read_i64line_from_handle", &styio_file_read_i64line_from_handle);
+    add_symbol("styio_file_write_cstr", &styio_file_write_cstr);
+    add_symbol("styio_cstr_to_i64", &styio_cstr_to_i64);
+    add_symbol("styio_cstr_to_f64", &styio_cstr_to_f64);
+    add_symbol("styio_read_file_i64line", &styio_read_file_i64line);
+    add_symbol("styio_strcat_ab", &styio_strcat_ab);
+    add_symbol("styio_clone_cstr", &styio_clone_cstr);
+    add_symbol("styio_free_cstr", &styio_free_cstr);
+    add_symbol("styio_i64_dec_cstr", &styio_i64_dec_cstr);
+    add_symbol("styio_f64_dec_cstr", &styio_f64_dec_cstr);
+    add_symbol("styio_runtime_has_error", &styio_runtime_has_error);
+    add_symbol("styio_runtime_last_error", &styio_runtime_last_error);
+    add_symbol("styio_runtime_last_error_subcode", &styio_runtime_last_error_subcode);
+    add_symbol("styio_runtime_error_matches_effect", &styio_runtime_error_matches_effect);
+    add_symbol("styio_runtime_clear_error", &styio_runtime_clear_error);
+    add_symbol("styio_runtime_set_log_sink", &styio_runtime_set_log_sink);
+    add_symbol("styio_stdout_write_cstr", &styio_stdout_write_cstr);
+    add_symbol("styio_stderr_write_cstr", &styio_stderr_write_cstr);
+    add_symbol("styio_stdin_read_line", &styio_stdin_read_line);
+
+    add_symbol("styio_task_i64_ready", &styio_task_i64_ready);
+    add_symbol("styio_task_f64_ready", &styio_task_f64_ready);
+    add_symbol("styio_task_cstr_ready", &styio_task_cstr_ready);
+    add_symbol("styio_task_i64_spawn", &styio_task_i64_spawn);
+    add_symbol("styio_task_f64_spawn", &styio_task_f64_spawn);
+    add_symbol("styio_task_cstr_spawn", &styio_task_cstr_spawn);
+    add_symbol("styio_task_i64_pull", &styio_task_i64_pull);
+    add_symbol("styio_task_f64_pull", &styio_task_f64_pull);
+    add_symbol("styio_task_cstr_pull", &styio_task_cstr_pull);
+    add_symbol("styio_task_release", &styio_task_release);
+    add_symbol("styio_task_active_count", &styio_task_active_count);
+    add_symbol("styio_task_worker_count", &styio_task_worker_count);
+    add_symbol("styio_task_scheduler_profile_reset", &styio_task_scheduler_profile_reset);
+    add_symbol("styio_task_scheduler_profile_enable", &styio_task_scheduler_profile_enable);
+    add_symbol("styio_task_scheduler_profile_snapshot", &styio_task_scheduler_profile_snapshot);
+
+    add_symbol("styio_list_i64_read_stdin", &styio_list_i64_read_stdin);
+    add_symbol("styio_list_f64_read_stdin", &styio_list_f64_read_stdin);
+    add_symbol("styio_list_cstr_read_stdin", &styio_list_cstr_read_stdin);
+    add_symbol("styio_string_lines", &styio_string_lines);
+    add_symbol("styio_char_cstr", &styio_char_cstr);
+    add_symbol("styio_list_new_bool", &styio_list_new_bool);
+    add_symbol("styio_list_new_char", &styio_list_new_char);
+    add_symbol("styio_list_new_i64", &styio_list_new_i64);
+    add_symbol("styio_list_new_f64", &styio_list_new_f64);
+    add_symbol("styio_list_new_cstr", &styio_list_new_cstr);
+    add_symbol("styio_list_new_list", &styio_list_new_list);
+    add_symbol("styio_list_new_dict", &styio_list_new_dict);
+    add_symbol("styio_list_new_matrix", &styio_list_new_matrix);
+    add_symbol("styio_list_push_bool", &styio_list_push_bool);
+    add_symbol("styio_list_push_char", &styio_list_push_char);
+    add_symbol("styio_list_push_i64", &styio_list_push_i64);
+    add_symbol("styio_list_push_f64", &styio_list_push_f64);
+    add_symbol("styio_list_push_cstr", &styio_list_push_cstr);
+    add_symbol("styio_list_push_list", &styio_list_push_list);
+    add_symbol("styio_list_push_dict", &styio_list_push_dict);
+    add_symbol("styio_list_push_matrix", &styio_list_push_matrix);
+    add_symbol("styio_list_insert_bool", &styio_list_insert_bool);
+    add_symbol("styio_list_insert_char", &styio_list_insert_char);
+    add_symbol("styio_list_insert_i64", &styio_list_insert_i64);
+    add_symbol("styio_list_insert_f64", &styio_list_insert_f64);
+    add_symbol("styio_list_insert_cstr", &styio_list_insert_cstr);
+    add_symbol("styio_list_insert_list", &styio_list_insert_list);
+    add_symbol("styio_list_insert_dict", &styio_list_insert_dict);
+    add_symbol("styio_list_insert_matrix", &styio_list_insert_matrix);
+    add_symbol("styio_list_clone", &styio_list_clone);
+    add_symbol("styio_list_len", &styio_list_len);
+    add_symbol("styio_list_get_bool", &styio_list_get_bool);
+    add_symbol("styio_list_get_char", &styio_list_get_char);
+    add_symbol("styio_list_get", &styio_list_get);
+    add_symbol("styio_list_get_f64", &styio_list_get_f64);
+    add_symbol("styio_list_get_cstr", &styio_list_get_cstr);
+    add_symbol("styio_list_get_list", &styio_list_get_list);
+    add_symbol("styio_list_get_dict", &styio_list_get_dict);
+    add_symbol("styio_list_get_matrix", &styio_list_get_matrix);
+    add_symbol("styio_list_slice", &styio_list_slice);
+    add_symbol("styio_list_set_bool", &styio_list_set_bool);
+    add_symbol("styio_list_set_char", &styio_list_set_char);
+    add_symbol("styio_list_set", &styio_list_set);
+    add_symbol("styio_list_set_f64", &styio_list_set_f64);
+    add_symbol("styio_list_set_cstr", &styio_list_set_cstr);
+    add_symbol("styio_list_set_list", &styio_list_set_list);
+    add_symbol("styio_list_set_dict", &styio_list_set_dict);
+    add_symbol("styio_list_set_matrix", &styio_list_set_matrix);
+    add_symbol("styio_list_pop", &styio_list_pop);
+    add_symbol("styio_list_to_cstr", &styio_list_to_cstr);
+    add_symbol("styio_list_release", &styio_list_release);
+    add_symbol("styio_list_active_count", &styio_list_active_count);
+
+    add_symbol("styio_matrix_new_i64", &styio_matrix_new_i64);
+    add_symbol("styio_matrix_new_f64", &styio_matrix_new_f64);
+    add_symbol("styio_matrix_identity_i64", &styio_matrix_identity_i64);
+    add_symbol("styio_matrix_identity_f64", &styio_matrix_identity_f64);
+    add_symbol("styio_matrix_clone", &styio_matrix_clone);
+    add_symbol("styio_matrix_clone_i64", &styio_matrix_clone_i64);
+    add_symbol("styio_matrix_clone_f64", &styio_matrix_clone_f64);
+    add_symbol("styio_matrix_rows", &styio_matrix_rows);
+    add_symbol("styio_matrix_cols", &styio_matrix_cols);
+    add_symbol("styio_matrix_shape", &styio_matrix_shape);
+    add_symbol("styio_matrix_get_i64", &styio_matrix_get_i64);
+    add_symbol("styio_matrix_get_f64", &styio_matrix_get_f64);
+    add_symbol("styio_matrix_set_i64", &styio_matrix_set_i64);
+    add_symbol("styio_matrix_set_f64", &styio_matrix_set_f64);
+    add_symbol("styio_matrix_row_i64", &styio_matrix_row_i64);
+    add_symbol("styio_matrix_row_f64", &styio_matrix_row_f64);
+    add_symbol("styio_matrix_rows_slice_i64", &styio_matrix_rows_slice_i64);
+    add_symbol("styio_matrix_rows_slice_f64", &styio_matrix_rows_slice_f64);
+    add_symbol("styio_matrix_add_i64", &styio_matrix_add_i64);
+    add_symbol("styio_matrix_add_f64", &styio_matrix_add_f64);
+    add_symbol("styio_matrix_sub_i64", &styio_matrix_sub_i64);
+    add_symbol("styio_matrix_sub_f64", &styio_matrix_sub_f64);
+    add_symbol("styio_matrix_hadamard_i64", &styio_matrix_hadamard_i64);
+    add_symbol("styio_matrix_hadamard_f64", &styio_matrix_hadamard_f64);
+    add_symbol("styio_matrix_matmul_i64", &styio_matrix_matmul_i64);
+    add_symbol("styio_matrix_matmul_f64", &styio_matrix_matmul_f64);
+    add_symbol("styio_matrix_scale_i64", &styio_matrix_scale_i64);
+    add_symbol("styio_matrix_scale_f64", &styio_matrix_scale_f64);
+    add_symbol("styio_matrix_transpose_i64", &styio_matrix_transpose_i64);
+    add_symbol("styio_matrix_transpose_f64", &styio_matrix_transpose_f64);
+    add_symbol("styio_matrix_dot_i64", &styio_matrix_dot_i64);
+    add_symbol("styio_matrix_dot_f64", &styio_matrix_dot_f64);
+    add_symbol("styio_matrix_sum_i64", &styio_matrix_sum_i64);
+    add_symbol("styio_matrix_sum_f64", &styio_matrix_sum_f64);
+    add_symbol("styio_matrix_norm", &styio_matrix_norm);
+    add_symbol("styio_matrix_data_i64", &styio_matrix_data_i64);
+    add_symbol("styio_matrix_data_f64", &styio_matrix_data_f64);
+    add_symbol("styio_matrix_to_cstr", &styio_matrix_to_cstr);
+    add_symbol("styio_matrix_release", &styio_matrix_release);
+    add_symbol("styio_matrix_active_count", &styio_matrix_active_count);
+
+    add_symbol("styio_dict_new_bool", &styio_dict_new_bool);
+    add_symbol("styio_dict_new_i64", &styio_dict_new_i64);
+    add_symbol("styio_dict_new_f64", &styio_dict_new_f64);
+    add_symbol("styio_dict_new_cstr", &styio_dict_new_cstr);
+    add_symbol("styio_dict_new_list", &styio_dict_new_list);
+    add_symbol("styio_dict_new_dict", &styio_dict_new_dict);
+    add_symbol("styio_dict_clone", &styio_dict_clone);
+    add_symbol("styio_dict_len", &styio_dict_len);
+    add_symbol("styio_dict_get_bool", &styio_dict_get_bool);
+    add_symbol("styio_dict_get_i64", &styio_dict_get_i64);
+    add_symbol("styio_dict_get_f64", &styio_dict_get_f64);
+    add_symbol("styio_dict_get_cstr", &styio_dict_get_cstr);
+    add_symbol("styio_dict_get_list", &styio_dict_get_list);
+    add_symbol("styio_dict_get_dict", &styio_dict_get_dict);
+    add_symbol("styio_dict_set_bool", &styio_dict_set_bool);
+    add_symbol("styio_dict_set_i64", &styio_dict_set_i64);
+    add_symbol("styio_dict_set_f64", &styio_dict_set_f64);
+    add_symbol("styio_dict_set_cstr", &styio_dict_set_cstr);
+    add_symbol("styio_dict_set_list", &styio_dict_set_list);
+    add_symbol("styio_dict_set_dict", &styio_dict_set_dict);
+    add_symbol("styio_dict_keys", &styio_dict_keys);
+    add_symbol("styio_dict_values_bool", &styio_dict_values_bool);
+    add_symbol("styio_dict_values_i64", &styio_dict_values_i64);
+    add_symbol("styio_dict_values_f64", &styio_dict_values_f64);
+    add_symbol("styio_dict_values_cstr", &styio_dict_values_cstr);
+    add_symbol("styio_dict_values_list", &styio_dict_values_list);
+    add_symbol("styio_dict_values_dict", &styio_dict_values_dict);
+    add_symbol("styio_dict_to_cstr", &styio_dict_to_cstr);
+    add_symbol("styio_dict_release", &styio_dict_release);
+    add_symbol("styio_dict_active_count", &styio_dict_active_count);
+    add_symbol("styio_dict_runtime_supported_impl_count", &styio_dict_runtime_supported_impl_count);
+    add_symbol("styio_dict_runtime_supported_impl_name", &styio_dict_runtime_supported_impl_name);
+    add_symbol("styio_dict_runtime_canonical_impl_name", &styio_dict_runtime_canonical_impl_name);
+    add_symbol("styio_dict_runtime_set_impl_by_name", &styio_dict_runtime_set_impl_by_name);
+    add_symbol("styio_dict_runtime_get_impl_name", &styio_dict_runtime_get_impl_name);
+    add_symbol("styio_dict_runtime_set_impl", &styio_dict_runtime_set_impl);
+    add_symbol("styio_dict_runtime_get_impl", &styio_dict_runtime_get_impl);
+
+    llvm::cantFail(MainJD.define(llvm::orc::absoluteSymbols(std::move(runtime_symbols))));
 
     // llvm::DenseSet<llvm::orc::SymbolStringPtr> AllowList({
     //   Mangle("something")
@@ -132,6 +282,15 @@ public:
     if (!RT)
       RT = MainJD.getDefaultResourceTracker();
     return CompileLayer.add(RT, std::move(TSM));
+  }
+
+  llvm::Error defineAbsoluteSymbol(llvm::StringRef Name, void* address) {
+    llvm::orc::SymbolMap symbols;
+    symbols[Mangle(Name)] = {
+      llvm::orc::ExecutorAddr::fromPtr(address),
+      llvm::JITSymbolFlags::Callable,
+    };
+    return MainJD.define(llvm::orc::absoluteSymbols(std::move(symbols)));
   }
 
   llvm::Expected<llvm::orc::ExecutorSymbolDef> lookup(llvm::StringRef Name) {

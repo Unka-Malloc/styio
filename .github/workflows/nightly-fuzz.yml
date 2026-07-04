@@ -7,7 +7,7 @@ on:
 
 jobs:
   nightly-fuzz:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 90
 
     steps:
@@ -21,6 +21,7 @@ jobs:
             cmake \
             ninja-build \
             clang-18 \
+            libclang-rt-18-dev \
             lld-18 \
             llvm-18-dev \
             libicu-dev \

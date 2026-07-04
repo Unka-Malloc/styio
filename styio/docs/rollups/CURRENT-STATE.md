@@ -1,44 +1,60 @@
 # Styio Current State
 
-**Purpose:** Provide the compressed default read-in for the current repository state so future agents can orient themselves before loading raw history or archive docs.
+**Purpose:** Provide the compressed default read-in for the current repository state so future agents can orient themselves from active docs first; Git history and minimal lifecycle provenance are optional background, not required maintenance input.
 
-**Last updated:** 2026-04-15
+**Last updated:** 2026-06-28
 
 ## Default Read Order
 
 1. Project priorities: [`../specs/PRINCIPLES-AND-OBJECTIVES.md`](../specs/PRINCIPLES-AND-OBJECTIVES.md)
 2. Current state: this file
-3. Active SSOT by topic:
+3. Active next-stage gap ledger: [`./NEXT-STAGE-GAP-LEDGER.md`](./NEXT-STAGE-GAP-LEDGER.md)
+4. Active SSOT by topic:
    - language/runtime semantics: [`../design/INDEX.md`](../design/INDEX.md)
    - project/doc rules: [`../specs/INDEX.md`](../specs/INDEX.md)
-   - open design contradictions: [`../review/Logic-Conflicts.md`](../review/Logic-Conflicts.md)
-   - workflow and gates: [`../assets/workflow/INDEX.md`](../assets/workflow/INDEX.md)
-4. Current implementation front: [`../milestones/2026-04-15/00-Milestone-Index.md`](../milestones/2026-04-15/00-Milestone-Index.md) and [`../plans/IDE-Incremental-Edits-and-Semantic-Query-Cache-Implementation-Plan.md`](../plans/IDE-Incremental-Edits-and-Semantic-Query-Cache-Implementation-Plan.md)
-5. Recent raw execution log: newest file in [`../history/INDEX.md`](../history/INDEX.md)
-6. Exact historical wording: [`../archive/ARCHIVE-LEDGER.md`](../archive/ARCHIVE-LEDGER.md)
+   - workflow and gates: [`../../workflows/INDEX.md`](../../workflows/INDEX.md)
+   - team execution: [`../teams/INDEX.md`](../teams/INDEX.md)
+5. Current implementation front: [`./NEXT-STAGE-GAP-LEDGER.md`](./NEXT-STAGE-GAP-LEDGER.md), plus the owning team runbooks for each touched area
+6. Optional provenance only when active docs are insufficient: Git history for exact old wording, [`../adr/IMPLEMENTED-DECISIONS.md`](../adr/IMPLEMENTED-DECISIONS.md) for compressed decisions, and [`../archive/ARCHIVE-LEDGER.md`](../archive/ARCHIVE-LEDGER.md) for lifecycle metadata
 
 ## Stable Baseline
 
 1. Project-level decision order is fixed by [`../specs/PRINCIPLES-AND-OBJECTIVES.md`](../specs/PRINCIPLES-AND-OBJECTIVES.md): performance first, usability second, and valuable rewrites are allowed even when compatibility breaks.
-2. Language/runtime acceptance is frozen through M1-M10. For standard streams, canonical writes are `expr -> @stdout/@stderr`, `expr >> @stdout/@stderr` remains accepted compatibility shorthand, and `(<< @stdin)` currently stays on the numeric instant-pull contract.
-3. The active parser/toolchain baseline is nightly-first rather than legacy-first. Shadow zero-fallback and five-layer pipeline coverage are part of the normal correctness story, not optional side tests.
-4. Repository docs now distinguish active summaries (`docs/rollups/`), active raw windows (`docs/history/`, `docs/review/`), and archived provenance (`docs/archive/`).
+2. Language/runtime acceptance is frozen through language feature acceptance suites. For standard streams, scalar writes are `expr -> @stdout/@stderr`, iterable writes are `items >> @stdout/@stderr`, stdin line iteration is `@stdin >> #(line) => {...}`, and immediate pull is `(<- @stdin)`. Compatibility forms remain accepted where already frozen: terminal spelling `(>_)` / symbolic stdin `<|(>_)` and legacy `(<< @stdin)` on the numeric instant-pull contract.
+3. The active parser/toolchain baseline is authoritative-nightly rather than legacy-first. Shadow zero-fallback and five-layer pipeline coverage remain migration evidence, but accepted grammar must pass through the hand-written nightly compiler parser without fallback.
+4. Repository docs now distinguish active maintenance docs (`docs/design`, `docs/specs`, `docs/teams`, root `workflows/`, current `docs/rollups/`) from Git-history provenance and the minimal `docs/archive/` lifecycle shell.
+5. File governance is now on the shared three-repo baseline: root `.gitignore` freezes the common ignore floor, `docs/**` and `tests/**` temp/build-style tracked fixtures use explicit negate rules, and `scripts/repo-hygiene-gate.py` checks both the patterns and the key governance doc links.
+6. Standard-library governance is manifest-first: `library/manifest.json` currently has only `std.resource` active, backed by `src/StyioPrelude/resources.styio` and resource/stdin/stdout evidence. Matrix helper calls and series `avg/max` selectors are compiler intrinsics, not active `std.*` modules.
 
 ## Current Development Front
 
-1. The active roadmap is the IDE batch M11-M19 in [`../milestones/2026-04-15/`](../milestones/2026-04-15/). It focuses on incremental edits, semantic query caching, stable HIR, resolver-backed semantics, completion quality, workspace indexing, runtime scheduling, and latency/perf closure.
-2. The corresponding execution sequence lives in [`../plans/IDE-Incremental-Edits-and-Semantic-Query-Cache-Implementation-Plan.md`](../plans/IDE-Incremental-Edits-and-Semantic-Query-Cache-Implementation-Plan.md). Treat the milestone batch as frozen acceptance and the plan as sequencing detail.
-3. Resource Topology v2 remains a target design rather than the running canonical syntax. Current implementation still keeps the M6 path canonical until a dedicated migration milestone lands.
+1. The active repo-wide unfinished-work summary is [`./NEXT-STAGE-GAP-LEDGER.md`](./NEXT-STAGE-GAP-LEDGER.md). Use it to split compiler debt, IDE closure work, and `spio` handoff tasks without collapsing repo boundaries.
+2. IDE work is tracked through the IDE external docs, IDE/LSP runbook, perf runbook, and current gap ledger instead of a retained planning batch.
+3. Resource topology remains a dedicated canonical-only migration track owned by [`../design/Styio-Resource-Topology.md`](../design/Styio-Resource-Topology.md), [`../design/syntax/ACTIVE-SYNTAX.md`](../design/syntax/ACTIVE-SYNTAX.md), and the current gap ledger. Bounded selector history and selector-copy snapshots are now executable for scalar/string/char/bool/f64/i64 values plus list-valued, dict-valued, and matrix-valued resources; bounded matrix selector snapshots also have finite stream-zip evidence once materialized as `list[matrix]`; tuple history, unbounded snapshots, and broader file/topology-resource copy remain open. The next topology work follows the P0 Sema/IR placeholder inventory and must not revive retired state-resource spellings.
+4. Broad industrial-language closure work is decision-gated by [`NEXT-STAGE-GAP-LEDGER.md`](./NEXT-STAGE-GAP-LEDGER.md) §5.7. IM-D1's StyioIR contract inventory lives in [`IM-D1-STYIOIR-CONTRACT-INVENTORY.md`](./IM-D1-STYIOIR-CONTRACT-INVENTORY.md), IM-D2's parser-authority inventory lives in [`IM-D2-PARSER-AUTHORITY-INVENTORY.md`](./IM-D2-PARSER-AUTHORITY-INVENTORY.md), IM-D3's diagnostic contract inventory lives in [`IM-D3-DIAGNOSTIC-CONTRACT-INVENTORY.md`](./IM-D3-DIAGNOSTIC-CONTRACT-INVENTORY.md), and IM-D7's native interop ABI inventory lives in [`IM-D7-NATIVE-INTEROP-ABI-INVENTORY.md`](./IM-D7-NATIVE-INTEROP-ABI-INVENTORY.md). Direct file iterator and direct file release statements now have `?|` settlement evidence for success, fallback, matched `io`, and no-fallback paths, while non-file iterators and value-required release expressions remain rejected. Simple value-returning resource methods now also have evidence for statement-only prefaces, scalar local `=` / `:=` prefaces, local list/dict/matrix `=` / `:=` prefaces that return scalar/string values or local list/dict/matrix container handles, and returned explicit `matrix` ordinary function calls plus matrix fallback literals; flat-list matrix returns, local resource bindings, lexical/global captures, and capture method bodies still fail before runtime. A missing compiler-language capability may remain unfinished only when it is recorded with a pending decision, a mature architecture reference, and a concrete stop condition.
+5. Pressure observer syntax currently has a parser/Sema/diagnostic boundary only: `resource.pressure >> #(p) => { ... }` reaches Sema and unsupported current resource families report `STYIO_SEMA_RESOURCE_PRESSURE_OBSERVER_UNSUPPORTED`. Runtime pressure streams, payload typing, observer execution, and broader backpressure scheduling remain open IM-D4/IM-D5 implementation work.
+6. Algorithmic optimization checkpoints are in progress — Checkpoint A (IR Walker + Pass Manager) and Checkpoint B (Tokenizer Span + Allocation) are complete. The IR walker (`StyioIRWalker`) centralizes IR tree traversal; the pass manager supports opt-level 0/1 with before/after verifier. The tokenizer uses span-first O(n) linear scanning with `CreateFromSpan`, a constexpr operator dispatch table, and 24 new span/perf regression tests. Remaining checkpoints: C (parser Pratt/precedence table), D (optimization passes), E (type constraint engine), F (resource typestate/dataflow), G (stream concurrency semantics).
+
+7. The next performance checkpoint is Algorithmic Optimization C (parser Pratt / precedence table), after the P0 placeholder inventory and canonical topology prerequisites are represented; it must preserve accepted grammar, no-fallback parser authority, and stable diagnostics.
+8. Hash-tag iterator routes are retired by owner decision and stay fail-closed with stable migration diagnostics; duplicate `@stdin & @stdin` zip stays fail-closed until an explicit tee/buffer or duplicate-driver design is accepted.
 
 ## Active Gates
 
-1. Docs structure: `python3 scripts/docs-index.py --write`, `python3 scripts/docs-audit.py`, `python3 scripts/docs-lifecycle.py validate`
-2. Core correctness: `ctest --test-dir build -L milestone`, `ctest --test-dir build -L styio_pipeline`, `ctest --test-dir build -L security`
-3. Parser migration health: shadow gate / zero-fallback / zero-internal-bridges flows described in [`../assets/workflow/TEST-CATALOG.md`](../assets/workflow/TEST-CATALOG.md)
-4. Benchmark/perf workflow: `benchmark/perf-route.sh` plus structured local reports; compare `results.json` / `benchmarks.csv`, not terminal screenshots
+1. File/docs governance floor: `python3 scripts/repo-hygiene-gate.py --mode tracked`, `python3 scripts/team-docs-gate.py`, `python3 scripts/docs-index.py --write`, `python3 scripts/docs-audit.py`, `python3 scripts/docs-lifecycle.py validate`
+2. Common delivery floor: `./scripts/delivery-gate.sh` (default safe auto mode; pass `--base <ref>` only when the intended branch/promotion base cannot be inferred)
+3. Core correctness: `ctest --test-dir build -L language_feature`, `ctest --test-dir build -L styio_pipeline`, `ctest --test-dir build -L security`
+4. Parser authority health: syntax-check authority tests plus shadow gate / zero-fallback / zero-internal-bridges flows described in [`../../workflows/TEST-CATALOG.md`](../../workflows/TEST-CATALOG.md)
+5. Source coverage: `scripts/coverage-gate.sh --build-dir build/coverage --threshold 95`; coverage below 95% fails checkpoint health and delivery.
+6. Benchmark/perf workflow: `styio-benchmark/tools/perf-route.sh --styio-root <styio-checkout>` plus structured reports in `styio-benchmark`; Styio keeps only probe build adapters and compatibility wrappers, while migrated probe sources live in `styio-benchmark/styio-probes/`
+
+## Optional Provenance
+
+1. `docs/history/`, `docs/review/`, and `docs/adr/` keep only active entrypoints or compressed summaries; exact old wording is recovered from Git history when needed.
+2. `docs/archive/` is a lifecycle metadata shell, not a place to keep old syntax catalogs, archived examples, archived source snapshots, old plans, old rollups, or absorbed planning batches in the current tree.
 
 ## Current Risks
 
-1. [`../review/Logic-Conflicts.md`](../review/Logic-Conflicts.md) still records unresolved syntax and semantic overloading around `<<`, `>>`, `@`, `&`, string coercion, and state lifetime.
-2. The IDE batch is specified but not fully closed; stable semantic identity, fine-grained caches, and runtime scheduling discipline are still active work.
+1. The deepest remaining implementation debt is summarized in [`./NEXT-STAGE-GAP-LEDGER.md`](./NEXT-STAGE-GAP-LEDGER.md): feature-specific parser additions under the IM-D2 no-fallback authority contract, sema/type feature debt after the IM-D1 placeholder contract closure, IM-D3 diagnostic-family refinement beyond the implemented public baseline, incomplete stream-processing stream closure, compile-plan release hardening with `styio-spio`, IDE operational closure, and the industrial-maturity decision register.
+2. Resource topology migration must keep design, parser/sema/lowering work, and test catalog updates in one checkpoint path.
 3. Benchmarking is now structured, but meaningful comparisons still depend on keeping parser shadow/five-layer gates green alongside the perf route.
+4. Shared ignore/fixture governance is only frozen for current tracked roots; any future repro root outside `docs/**` or `tests/**` still needs explicit negate rules before files land.

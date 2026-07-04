@@ -6,7 +6,9 @@ cmake_test_discovery_*.json
 compile_commands.json
 
 # Local binaries / archives / debug bundles
-styio
+/styio
+!/styio/
+!/styio/**
 styio_test
 styio_security_test
 sample.ll
@@ -46,6 +48,21 @@ cmake_install.cmake
 # Xmake cache
 .xmake/
 
+# Python / Node / Flutter workspace caches
+**/__pycache__/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+node_modules/
+**/node_modules/
+**/.dart_tool/
+**/.gradle/
+**/coverage/
+**/dist/
+
 # Profiling / sanitizer / fuzz leftovers
 *.profraw
 *.profdata
@@ -56,3 +73,29 @@ cmake_install.cmake
 
 # MacOS Cache
 .DS_Store
+
+# Shared cross-repo tracked-fixture negate rules
+!docs/**/build/
+!docs/**/build/**
+!docs/**/build-*/
+!docs/**/build-*/**
+!docs/**/tmp/
+!docs/**/tmp/**
+!docs/**/*.tmp
+!docs/**/*.log
+!styio/tests/**/build/
+!styio/tests/**/build/**
+!styio/tests/**/build-*/
+!styio/tests/**/build-*/**
+!styio/tests/**/tmp/
+!styio/tests/**/tmp/**
+!styio/tests/**/*.tmp
+!styio/tests/**/*.log
+!vityo/frontend/vityo_app/test/**/build/
+!vityo/frontend/vityo_app/test/**/build/**
+!vityo/frontend/vityo_app/test/**/build-*/
+!vityo/frontend/vityo_app/test/**/build-*/**
+!vityo/frontend/vityo_app/test/**/tmp/
+!vityo/frontend/vityo_app/test/**/tmp/**
+!vityo/frontend/vityo_app/test/**/*.tmp
+!vityo/frontend/vityo_app/test/**/*.log

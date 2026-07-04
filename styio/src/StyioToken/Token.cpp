@@ -1,5 +1,6 @@
 // [C++ STL]
 #include <string>
+#include <algorithm>
 
 // [Styio]
 #include "Token.hpp"
@@ -91,6 +92,14 @@ reprASTType(StyioNodeType type, std::string extra) {
       output += std::string("package");
     } break;
 
+    case StyioNodeType::ExportDecl: {
+      output += std::string("export");
+    } break;
+
+    case StyioNodeType::ExternBlock: {
+      output += std::string("extern");
+    } break;
+
     case StyioNodeType::Parameters: {
       output += std::string("vars");
     } break;
@@ -133,6 +142,10 @@ reprASTType(StyioNodeType type, std::string extra) {
 
     case StyioNodeType::Access_By_Index: {
       output += std::string("access.by_index");
+    } break;
+
+    case StyioNodeType::Access_By_Slice: {
+      output += std::string("access.by_slice");
     } break;
 
     case StyioNodeType::Get_Index_By_Value: {
@@ -255,10 +268,6 @@ reprASTType(StyioNodeType type, std::string extra) {
       output += std::string("instant.pull");
     } break;
 
-    case StyioNodeType::TypedStdinList: {
-      output += std::string("stdin.list.typed");
-    } break;
-
     case StyioNodeType::IterSeq: {
       output += std::string("iterator.sequence");
     } break;
@@ -374,6 +383,30 @@ reprASTType(StyioNodeType type, std::string extra) {
       output += std::string("resource.file");
     } break;
 
+    case StyioNodeType::EmptyResource: {
+      output += std::string("resource.empty");
+    } break;
+
+    case StyioNodeType::ResourceReceiver: {
+      output += std::string("resource.receiver");
+    } break;
+
+    case StyioNodeType::ResourceMethodDef: {
+      output += std::string("resource.method.def");
+    } break;
+
+    case StyioNodeType::ResourceOrder: {
+      output += std::string("resource.order");
+    } break;
+
+    case StyioNodeType::ResourceDecl: {
+      output += std::string("resource.decl");
+    } break;
+
+    case StyioNodeType::ResourceRef: {
+      output += std::string("resource.ref");
+    } break;
+
     case StyioNodeType::HandleAcquire: {
       output += std::string("handle.acquire");
     } break;
@@ -384,6 +417,22 @@ reprASTType(StyioNodeType type, std::string extra) {
 
     case StyioNodeType::ResourceRedirect: {
       output += std::string("resource.redirect");
+    } break;
+
+    case StyioNodeType::ResourceEffect: {
+      output += std::string("resource.effect");
+    } break;
+
+    case StyioNodeType::TaskBlock: {
+      output += std::string("task.block");
+    } break;
+
+    case StyioNodeType::TaskGroupLaunch: {
+      output += std::string("task.group");
+    } break;
+
+    case StyioNodeType::FlowBind: {
+      output += std::string("flow.bind");
     } break;
 
     case StyioNodeType::StateDecl: {
@@ -503,12 +552,30 @@ reprToken(CompType token) {
 
 StyioDataType
 getMaxType(StyioDataType T1, StyioDataType T2) {
-  if (T1.option == T2.option) {
-    return T1;
+  if (T1.isInteger() && T2.isInteger()) {
+    const auto max_num_of_bit = std::max(T1.num_of_bit, T2.num_of_bit);
+    if (max_num_of_bit == 0) {
+      return T1;
+    }
+    return StyioDataType{
+      StyioDataTypeOption::Integer, "i" + std::to_string(max_num_of_bit), max_num_of_bit};
+  }
+  if (T1.isFloat() && T2.isFloat()) {
+    const auto max_num_of_bit = std::max(T1.num_of_bit, T2.num_of_bit);
+    const auto type_name = max_num_of_bit > 32 ? "f64" : "f32";
+    const size_t type_bits = max_num_of_bit > 32 ? 64 : 32;
+    return StyioDataType{StyioDataTypeOption::Float, type_name, type_bits};
   }
 
   if ((T1.isInteger() && T2.isFloat()) || (T1.isFloat() && T2.isInteger())) {
-    return StyioDataType{StyioDataTypeOption::Float, "f64", 64};
+    const auto max_num_of_bit = std::max(T1.num_of_bit, T2.num_of_bit);
+    const auto type_name = max_num_of_bit > 32 ? "f64" : "f32";
+    const size_t type_bits = max_num_of_bit > 32 ? 64 : 32;
+    return StyioDataType{StyioDataTypeOption::Float, type_name, type_bits};
+  }
+
+  if (T1.option == T2.option) {
+    return T1;
   }
 
   return StyioDataType{StyioDataTypeOption::Undefined, "Undefined", 0};
@@ -559,6 +626,10 @@ reprDataTypeOption(StyioDataTypeOption option) {
 
     case StyioDataTypeOption::Dict: {
       return "dict";
+    } break;
+
+    case StyioDataTypeOption::Matrix: {
+      return "matrix";
     } break;
 
     case StyioDataTypeOption::Struct: {
@@ -615,6 +686,9 @@ StyioToken::getTokName(StyioTokenType type) {
 
     case StyioTokenType::COMMENT_CLOSED:
       return "/* COMMENT */";
+
+    case StyioTokenType::NATIVE_EXTERN_BODY:
+      return "<NATIVE_EXTERN_BODY>";
 
     case StyioTokenType::TOK_COMMA:
       return ",";
@@ -823,6 +897,18 @@ StyioToken::getTokName(StyioTokenType type) {
     case StyioTokenType::YIELD_PIPE:
       return "<|";
 
+    case StyioTokenType::RETURN_PIPE:
+      return "|<|";
+
+    case StyioTokenType::AWAIT_PIPE:
+      return "?|";
+
+    case StyioTokenType::PIPE_SEMICOLON:
+      return "|;";
+
+    case StyioTokenType::TASK_LAUNCH:
+      return "||>";
+
     case StyioTokenType::INFINITE_LIST:
       return "[...]";
 
@@ -839,7 +925,7 @@ StyioToken::getTokName(StyioTokenType type) {
 
 size_t
 StyioToken::length() {
-  return original.length();
+  return lexeme().size();
 }
 
 std::string
@@ -853,10 +939,10 @@ StyioToken::as_str() {
   else if (type == StyioTokenType::NAME
            || type == StyioTokenType::INTEGER
            || type == StyioTokenType::DECIMAL) {
-    return getTokName(this->type) + " = " + this->original;
+    return getTokName(this->type) + " = " + this->textString();
   }
   else if (type == StyioTokenType::STRING) {
-    return "\"" + this->original + "\"";
+    return "\"" + this->textString() + "\"";
   }
   else {
     return getTokName(this->type);

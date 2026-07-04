@@ -1,7 +1,6 @@
 #include "StyioTesting/PipelineCheck.hpp"
 
 #include <atomic>
-#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -11,17 +10,21 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "StyioAST/AST.hpp"
-#include "StyioAnalyzer/ASTAnalyzer.hpp"
+#include "StyioCodeGen/LLVMEmission.hpp"
+#include "StyioLowering/AstToStyioIRLowerer.hpp"
+#include "StyioLowering/AstToStyioIRStage.hpp"
 #include "StyioCodeGen/CodeGenVisitor.hpp"
 #include "StyioException/Exception.hpp"
 #include "StyioIR/StyioIR.hpp"
 #include "StyioJIT/StyioJIT_ORC.hpp"
 #include "StyioParser/Parser.hpp"
 #include "StyioParser/Tokenizer.hpp"
+#include "StyioSema/SemanticAnalysis.hpp"
 #include "StyioToString/ToStringVisitor.hpp"
 #include "StyioToken/Token.hpp"
 
@@ -46,28 +49,27 @@ read_text_file(const fs::path& p) {
   return ss.str();
 }
 
-/** Strip trailing CR/LF then append a single \\n (stable golden comparison). */
+/** Normalize host line endings, strip trailing CR/LF, then append a single \\n. */
 void
 normalize_text(std::string& s) {
+  std::string normalized;
+  normalized.reserve(s.size());
+  for (std::size_t i = 0; i < s.size(); ++i) {
+    if (s[i] == '\r') {
+      if (i + 1 < s.size() && s[i + 1] == '\n') {
+        continue;
+      }
+      normalized.push_back('\n');
+    }
+    else {
+      normalized.push_back(s[i]);
+    }
+  }
+  s = std::move(normalized);
   while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) {
     s.pop_back();
   }
   s.push_back('\n');
-}
-
-std::string
-capture_subprocess_stdout(const std::string& cmd) {
-  std::string out;
-  std::array<char, 4096> buf{};
-  FILE* pipe = popen(cmd.c_str(), "r");
-  if (pipe == nullptr) {
-    return {};
-  }
-  while (fgets(buf.data(), static_cast<int>(buf.size()), pipe) != nullptr) {
-    out += buf.data();
-  }
-  pclose(pipe);
-  return out;
 }
 
 struct SubprocessCaptureLatest
@@ -135,7 +137,7 @@ std::string
 tokens_to_golden(const std::vector<StyioToken*>& tokens) {
   std::ostringstream out;
   for (auto* tok : tokens) {
-    out << StyioToken::getTokName(tok->type) << '\t' << escape_lexeme(tok->original) << '\n';
+    out << StyioToken::getTokName(tok->type) << '\t' << escape_lexeme(tok->textString()) << '\n';
   }
   return out.str();
 }
@@ -189,9 +191,31 @@ first_text_diff(const std::string& got, const std::string& exp, const char* arti
 
 void
 normalize_llvm_module_text(std::string& s) {
+  static const std::regex printf_i64(
+    R"(^\s*(?:%\d+\s*=\s*)?call i32 \(ptr, \.\.\.\) @printf\(ptr @styio_fmt_i64, i64 (.+)\)$)");
+  static const std::regex printf_str(
+    R"(^\s*(?:%\d+\s*=\s*)?call i32 \(ptr, \.\.\.\) @printf\(ptr @styio_fmt_str, ptr (.+)\)$)");
+  static const std::regex puts_at(R"(^\s*(?:%\d+\s*=\s*)?call i32 @puts\(ptr @styio_print_at\)$)");
+  static const std::regex i64_to_cstr(R"(^\s*(%\d+)\s*=\s*call ptr @styio_i64_dec_cstr\(i64 (.+)\)$)");
+  static const std::regex f64_to_cstr(R"(^\s*(%\d+)\s*=\s*call ptr @styio_f64_dec_cstr\(double (.+)\)$)");
+  static const std::regex stdout_write(R"(^\s*call void @styio_stdout_write_cstr\(ptr (.+)\)$)");
+  static const std::regex ssa_temp(R"(%\d+)");
+
   std::istringstream in(s);
   std::string out;
   std::string line;
+  std::unordered_map<std::string, std::string> pending_stdout_canonical;
+  auto trim = [](const std::string& value) {
+    size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
+      ++begin;
+    }
+    size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+      --end;
+    }
+    return value.substr(begin, end - begin);
+  };
   while (std::getline(in, line)) {
     if (line.find("target datalayout =") != std::string::npos) {
       continue;
@@ -199,7 +223,72 @@ normalize_llvm_module_text(std::string& s) {
     if (line.find("target triple =") != std::string::npos) {
       continue;
     }
-    out += line;
+    const std::string trimmed = trim(line);
+    if (trimmed.empty()) {
+      continue;
+    }
+    if (line.find("@styio_fmt_i64 =") != std::string::npos) {
+      continue;
+    }
+    if (line.find("@styio_fmt_str =") != std::string::npos) {
+      continue;
+    }
+    if (trimmed.rfind("declare ", 0) == 0) {
+      continue;
+    }
+
+    std::smatch match;
+    if (std::regex_match(line, match, printf_i64)) {
+      out += std::regex_replace(
+        "  ; STYIO_STDOUT_I64 " + trim(match[1].str()) + "\n",
+        ssa_temp,
+        "%tmp");
+      continue;
+    }
+    if (std::regex_match(line, match, printf_str)) {
+      out += std::regex_replace(
+        "  ; STYIO_STDOUT_CSTR " + trim(match[1].str()) + "\n",
+        ssa_temp,
+        "%tmp");
+      continue;
+    }
+    if (std::regex_match(line, match, puts_at)) {
+      out += "  ; STYIO_STDOUT_AT\n";
+      continue;
+    }
+    if (std::regex_match(line, match, i64_to_cstr)) {
+      pending_stdout_canonical[match[1].str()] = std::regex_replace(
+        "  ; STYIO_STDOUT_I64 " + trim(match[2].str()) + "\n",
+        ssa_temp,
+        "%tmp");
+      continue;
+    }
+    if (std::regex_match(line, match, f64_to_cstr)) {
+      pending_stdout_canonical[match[1].str()] = std::regex_replace(
+        "  ; STYIO_STDOUT_F64 " + trim(match[2].str()) + "\n",
+        ssa_temp,
+        "%tmp");
+      continue;
+    }
+    if (std::regex_match(line, match, stdout_write)) {
+      const std::string arg = trim(match[1].str());
+      if (arg == "@styio_print_at") {
+        out += "  ; STYIO_STDOUT_AT\n";
+      }
+      else if (auto it = pending_stdout_canonical.find(arg); it != pending_stdout_canonical.end()) {
+        out += it->second;
+        pending_stdout_canonical.erase(it);
+      }
+      else {
+        out += std::regex_replace(
+          "  ; STYIO_STDOUT_CSTR " + arg + "\n",
+          ssa_temp,
+          "%tmp");
+      }
+      continue;
+    }
+
+    out += std::regex_replace(line, ssa_temp, "%tmp");
     out.push_back('\n');
   }
   s = std::move(out);
@@ -272,8 +361,8 @@ run_pipeline_case(const std::string& case_dir, const char* layer5_compiler_exe) 
     StyioRepr repr;
     const std::string ast_pre = ast->toString(&repr);
 
-    StyioAnalyzer analyzer;
-    analyzer.typeInfer(ast);
+    AstToStyioIRLowerer analyzer;
+    styio::sema::require_semantic_analysis(ast, &analyzer);
     std::string ast_typed = ast->toString(&repr);
 
     std::string exp_ast = read_text_file(gold / "ast.txt");
@@ -292,7 +381,7 @@ run_pipeline_case(const std::string& case_dir, const char* layer5_compiler_exe) 
         + ast_pre;
     }
 
-    StyioIR* ir = analyzer.toStyioIR(ast);
+    StyioIR* ir = styio::lowering::lower_semantic_ast_to_styio_ir(ast, &analyzer);
     std::string got_ir = ir->toString(&repr);
     std::string exp_ir = read_text_file(gold / "styio_ir.txt");
     normalize_text(got_ir);
@@ -315,7 +404,7 @@ run_pipeline_case(const std::string& case_dir, const char* layer5_compiler_exe) 
     llvm::ExitOnError exit_on_error;
     std::unique_ptr<StyioJIT_ORC> jit = exit_on_error(StyioJIT_ORC::Create());
     StyioToLLVM generator(std::move(jit));
-    ir->toLLVMIR(&generator);
+    styio::codegen::emit_llvm_ir(ir, &generator);
     std::string got_llvm = generator.dump_llvm_ir();
     std::string exp_llvm = read_text_file(gold / "llvm_ir.txt");
     normalize_llvm_module_text(got_llvm);

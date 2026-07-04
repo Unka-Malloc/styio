@@ -1,15 +1,42 @@
 # Plans Docs
 
-**Purpose:** Define the scope and naming rules for `docs/plans/`; the generated file inventory lives in [INDEX.md](./INDEX.md).
+**Purpose:** Define the scope and naming rules for the small set of active implementation plans under `docs/plans/`; absorbed plans are removed from the current tree after durable rules move into active docs, and the generated file inventory lives in [INDEX.md](./INDEX.md).
 
-**Last updated:** 2026-04-15
+**Last updated:** 2026-06-28
 
 ## Scope
 
-1. Store implementation plans, migration plans, and early drafts here.
+1. Store only active implementation plans, active migration plans, and still-open cross-repo contracts here.
 2. These files are not language or acceptance SSOT.
-3. When a plan is superseded by a frozen milestone or design document, mark that state explicitly.
-4. Tradeoff order for plans still follows [../specs/PRINCIPLES-AND-OBJECTIVES.md](../specs/PRINCIPLES-AND-OBJECTIVES.md).
+3. A plan may remain here after a repo-local baseline closes only if it still governs hardening, cross-repository alignment, or later closure work; when that happens, the file must state its current status explicitly near the top.
+4. When a plan is superseded or its durable knowledge has been absorbed into active docs, remove it from the current tree and rely on Git history for exact old wording.
+5. Tradeoff order for plans still follows [../specs/PRINCIPLES-AND-OBJECTIVES.md](../specs/PRINCIPLES-AND-OBJECTIVES.md).
+
+## Required Plan Shape
+
+Every plan document in this directory, except this README and the generated INDEX, must include these exact H2 sections:
+
+1. `## 前置条件`
+2. `## 验收条件`
+
+`## 前置条件` must explicitly say whether work can run in parallel, whether sub-agents may be started, and whether any common foundation work must land first. Plans should default to parallel-first execution: split read-only inventory, evidence gathering, downstream confirmation, and test discovery into independent lanes; keep only shared foundation changes, semantic decisions, public contract shape changes, and final SSOT updates behind a named serial merge gate. Custom planning sections may appear between the two required sections.
+
+`## 验收条件` must name the acceptance evidence, owner gates, or exit criteria that prove the plan is complete.
+
+## 通用基座计划索引
+
+Common foundation work must be routed through exactly one foundation plan per foundation key. A feature or application-layer plan that discovers foundation work must put the foundation checkpoint first, then split upper-layer work only after the foundation plan's prerequisites and acceptance conditions are satisfied.
+
+| Foundation key | Owning plan | Scope |
+|----------------|-------------|-------|
+| `common-foundation` | [Styio-Common-Foundation-Plan.md](./Styio-Common-Foundation-Plan.md) | Shared workflow gates, repo-local skills, docs/process gates, test harness entrypoints, compiler service contracts, and other substrate changes that unblock multiple upper-layer feature plans. |
+
+## Status Rules
+
+1. Use explicit top-level status wording such as `Active`, `Repo-local baseline completed`, or `Completed and ready for deletion after promotion`.
+2. If a repo-local baseline is complete but ecosystem closure remains open elsewhere, say so directly and link the owning master plan.
+3. If a plan is still the sequencing document for unfinished work, keep it short and link the owning SSOT instead of duplicating details.
+4. `docs/plans/INDEX.md` and repository entry docs should be able to answer "is this still active?" without forcing readers to infer it from stage tables.
 
 ## Naming Rules
 

@@ -14,10 +14,12 @@
 using std::vector;
 
 // [Styio]
-#include "../StyioAnalyzer/ASTAnalyzer.hpp"
+#include "../StyioLowering/AstToStyioIRLowerer.hpp"
 #include "../StyioSession/SessionAllocation.hpp"
+#include "../StyioSession/SymbolInterner.hpp"
 #include "../StyioToString/ToStringVisitor.hpp"
 #include "../StyioToken/Token.hpp"
+#include "../StyioUtil/ResourceNames.hpp"
 #include "ASTDecl.hpp"
 
 // [LLVM]
@@ -72,10 +74,10 @@ public:
   virtual std::string toString(StyioRepr* visitor, int indent = 0) = 0;
 
   /* Type Inference */
-  virtual void typeInfer(StyioAnalyzer* visitor) = 0;
+  virtual void typeInfer(StyioSemaContext* visitor) = 0;
 
   /* Code Gen. StyioIR */
-  virtual StyioIR* toStyioIR(StyioAnalyzer* visitor) = 0;
+  virtual StyioIR* toStyioIR(AstToStyioIRLowerer* visitor) = 0;
 
 private:
   inline static thread_local std::unordered_set<StyioAST*> tracked_nodes_;
@@ -94,11 +96,11 @@ public:
     return visitor->toString(static_cast<Derived*>(this), indent);
   }
 
-  void typeInfer(StyioAnalyzer* visitor) override {
+  void typeInfer(StyioSemaContext* visitor) override {
     visitor->typeInfer(static_cast<Derived*>(this));
   }
 
-  StyioIR* toStyioIR(StyioAnalyzer* visitor) override {
+  StyioIR* toStyioIR(AstToStyioIRLowerer* visitor) override {
     return visitor->toStyioIR(static_cast<Derived*>(this));
   }
 };
@@ -138,10 +140,15 @@ class NameAST : public StyioASTTraits<NameAST>
 {
 private:
   string name_str;
+  styio::session::SymbolId sid_ = styio::session::kInvalidSymbolId;
 
 public:
   NameAST(string name) :
       name_str(name) {
+  }
+
+  NameAST(string name, styio::session::SymbolId sid) :
+      name_str(name), sid_(sid) {
   }
 
   static NameAST* Create() {
@@ -152,8 +159,26 @@ public:
     return new NameAST(name);
   }
 
+  static NameAST* Create(string name, styio::session::SymbolId sid) {
+    return new NameAST(name, sid);
+  }
+
+  /// Clone a NameAST, preserving its SymbolId.
+  static NameAST* Clone(NameAST* other) {
+    if (!other) return Create();
+    return new NameAST(other->name_str, other->sid_);
+  }
+
   const string& getAsStr() {
     return name_str;
+  }
+
+  styio::session::SymbolId getSymbolId() const {
+    return sid_;
+  }
+
+  void setSymbolId(styio::session::SymbolId sid) {
+    sid_ = sid;
   }
 
   const StyioNodeType getNodeType() const {
@@ -201,7 +226,7 @@ public:
   }
 
   /*
-    Topology v2 bounded ring [|n|] in type position (name prefix bounded_ring:n).
+    resource topology bounded ring [|n|] in type position (name prefix bounded_ring:n).
     CodeGen: alloca [n x i64] + head cursor; reads return last written cell (see BoundedType.hpp).
   */
   static TypeAST* CreateBoundedRingBuffer(string capacity_digits) {
@@ -393,7 +418,7 @@ class FloatAST : public StyioASTTraits<FloatAST>
 {
 public:
   string value;
-  TypeAST* data_type = TypeAST::Create(StyioDataType{StyioDataTypeOption::Float, "Float", 64});
+  TypeAST* data_type = TypeAST::Create(StyioDataType{StyioDataTypeOption::Float, "f64", 64});
 
   FloatAST(const string& value) :
       value(value) {
@@ -402,6 +427,10 @@ public:
   FloatAST(const string& value, StyioDataType type) :
       value(value) {
     data_type->type = type;
+  }
+
+  ~FloatAST() override {
+    delete data_type;
   }
 
   static FloatAST* Create(const string& value) {
@@ -448,7 +477,7 @@ public:
   }
 
   const StyioDataType getDataType() const {
-    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+    return StyioDataType{StyioDataTypeOption::Char, "char", 8};
   }
 };
 
@@ -622,7 +651,8 @@ class BreakAST : public StyioASTTraits<BreakAST>
 
 public:
   explicit BreakAST(unsigned d = 1) :
-      depth_(d) {
+      depth_(1) {
+    (void)d;
   }
 
   static BreakAST* Create(unsigned d = 1) {
@@ -973,7 +1003,9 @@ public:
 class TypeConvertAST : public StyioASTTraits<TypeConvertAST>
 {
   std::unique_ptr<StyioAST> value_owner_;
+  std::unique_ptr<TypeAST> data_type_owner_;
   StyioAST* Value = nullptr;
+  TypeAST* data_type = nullptr;
   NumPromoTy PromoType;
 
 public:
@@ -981,7 +1013,11 @@ public:
     StyioAST* val,
     NumPromoTy promo_type
   ) :
-      value_owner_(val), Value(value_owner_.get()), PromoType(promo_type) {
+      value_owner_(val),
+      data_type_owner_(TypeAST::Create()),
+      Value(value_owner_.get()),
+      data_type(data_type_owner_.get()),
+      PromoType(promo_type) {
   }
 
   static TypeConvertAST* Create(
@@ -999,12 +1035,16 @@ public:
     return PromoType;
   }
 
+  void setDataType(StyioDataType type) {
+    data_type->setType(type);
+  }
+
   const StyioNodeType getNodeType() const {
     return StyioNodeType::NumConvert;
   }
 
   const StyioDataType getDataType() const {
-    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+    return data_type->getDataType();
   }
 };
 
@@ -1508,13 +1548,17 @@ public:
 class SizeOfAST : public StyioASTTraits<SizeOfAST>
 {
   std::unique_ptr<StyioAST> value_owner_;
+  std::unique_ptr<TypeAST> size_type_owner_;
   StyioAST* Value = nullptr;
+  TypeAST* size_type = nullptr;
 
 public:
   SizeOfAST(
     StyioAST* value
   ) :
       value_owner_(value), Value(value_owner_.get()) {
+    size_type_owner_.reset(TypeAST::Create());
+    size_type = size_type_owner_.get();
   }
 
   StyioAST* getValue() {
@@ -1526,7 +1570,11 @@ public:
   }
 
   const StyioDataType getDataType() const {
-    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+    return size_type->getDataType();
+  }
+
+  void setDataType(StyioDataType type) {
+    size_type->setType(type);
   }
 };
 
@@ -1682,7 +1730,7 @@ public:
   }
 };
 
-/* M4: algebraic absence @ and wave / fallback */
+/* Wave dispatch: algebraic absence @ and wave / fallback */
 class UndefinedLitAST : public StyioASTTraits<UndefinedLitAST>
 {
   UndefinedLitAST() = default;
@@ -1976,6 +2024,9 @@ private:
   }
 
 public:
+  static constexpr const char* OneShotContinuationResumeName = "__styio_resume_oneshot";
+  static constexpr const char* CallableApplyName = "__styio_resume_oneshot";
+
   StyioAST* func_callee = nullptr;
   NameAST* func_name = nullptr;
   vector<StyioAST*> func_args;
@@ -2016,9 +2067,29 @@ public:
     return new FuncCallAST(func_callee, func_name, arguments);
   }
 
+  static FuncCallAST* CreateCallable(
+    StyioAST* func_callee,
+    vector<StyioAST*> arguments
+  ) {
+    return new FuncCallAST(
+      func_callee,
+      NameAST::Create(CallableApplyName),
+      arguments);
+  }
+
   void setFuncCallee(StyioAST* callee) {
     func_callee_owner_.reset(callee);
     func_callee = func_callee_owner_.get();
+  }
+
+  bool isCallableApply() const {
+    return isOneShotContinuationResume();
+  }
+
+  bool isOneShotContinuationResume() const {
+    return func_callee != nullptr
+           && func_name != nullptr
+           && func_name->getAsStr() == OneShotContinuationResumeName;
   }
 
   NameAST* getFuncName() {
@@ -2069,6 +2140,9 @@ public:
     Access_By_Index
       [index]
 
+    Access_By_Slice
+      [start..end]
+
     Access_By_Name
       ["name"]
 
@@ -2091,7 +2165,7 @@ public:
       [-: (i0, i1, ...)]
 
     Remove_Items_By_Many_Values
-      [-: ?^ (v0, v1, ...)]
+      [-: ?^ (x0, x_next, ...)]
 
     Get_Index_By_Item_From_Right
       [[<] ?= value]
@@ -2100,7 +2174,7 @@ public:
       [[<] -: ?= value]
 
     Remove_Items_By_Many_Values_From_Right
-      [[<] -: ?^ (v0, v1, ...)]
+      [[<] -: ?^ (x0, x_next, ...)]
   */
   ListOpAST(StyioNodeType opType, StyioAST* theList, StyioAST* item) :
       list_owner_(theList),
@@ -2229,6 +2303,301 @@ public:
 
   const StyioDataType getDataType() const {
     return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+  }
+};
+
+class EmptyResourceAST : public StyioASTTraits<EmptyResourceAST>
+{
+public:
+  static EmptyResourceAST* Create() {
+    return new EmptyResourceAST();
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::EmptyResource;
+  }
+
+  const StyioDataType getDataType() const {
+    return StyioDataType{StyioDataTypeOption::Defined, "empty-resource", 0};
+  }
+};
+
+class ResourceReceiverAST : public StyioASTTraits<ResourceReceiverAST>
+{
+  std::string family_;
+
+  explicit ResourceReceiverAST(std::string family) :
+      family_(std::move(family)) {
+  }
+
+public:
+  static ResourceReceiverAST* Create(std::string family) {
+    return new ResourceReceiverAST(std::move(family));
+  }
+
+  const std::string& getFamilyName() const {
+    return family_;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ResourceReceiver;
+  }
+
+  const StyioDataType getDataType() const {
+    if (styio_is_file_resource_family_name(family_)) {
+      return styio_make_file_handle_type("i64");
+    }
+    if (styio_is_stdin_resource_family_name(family_)) {
+      return styio_make_std_stream_type(StdStreamKind::Stdin, "string");
+    }
+    if (styio_is_stdout_resource_family_name(family_)) {
+      return styio_make_std_stream_type(StdStreamKind::Stdout, "string");
+    }
+    if (styio_is_stderr_resource_family_name(family_)) {
+      return styio_make_std_stream_type(StdStreamKind::Stderr, "string");
+    }
+    return StyioDataType{StyioDataTypeOption::Defined, "resource-family:" + family_, 0};
+  }
+};
+
+class ResourceMethodDefAST : public StyioASTTraits<ResourceMethodDefAST>
+{
+  std::string family_;
+  std::string method_;
+  bool final_binding_ = false;
+  bool property_ = false;
+  std::vector<std::unique_ptr<ParamAST>> param_owners_;
+  std::vector<ParamAST*> params_;
+  std::unique_ptr<StyioAST> body_owner_;
+  StyioAST* body_ = nullptr;
+
+  ResourceMethodDefAST(
+    std::string family,
+    std::string method,
+    bool final_binding,
+    bool property,
+    std::vector<ParamAST*> params,
+    StyioAST* body
+  ) :
+      family_(std::move(family)),
+      method_(std::move(method)),
+      final_binding_(final_binding),
+      property_(property),
+      body_owner_(body),
+      body_(body_owner_.get()) {
+    param_owners_.reserve(params.size());
+    params_.reserve(params.size());
+    for (auto* param : params) {
+      param_owners_.emplace_back(param);
+      params_.push_back(param_owners_.back().get());
+    }
+  }
+
+public:
+  static ResourceMethodDefAST* Create(
+    std::string family,
+    std::string method,
+    bool final_binding,
+    bool property,
+    std::vector<ParamAST*> params,
+    StyioAST* body
+  ) {
+    return new ResourceMethodDefAST(
+      std::move(family),
+      std::move(method),
+      final_binding,
+      property,
+      std::move(params),
+      body);
+  }
+
+  const std::string& getFamilyName() const {
+    return family_;
+  }
+
+  const std::string& getMethodName() const {
+    return method_;
+  }
+
+  bool isFinalBinding() const {
+    return final_binding_;
+  }
+
+  bool isProperty() const {
+    return property_;
+  }
+
+  const std::vector<ParamAST*>& getParams() const {
+    return params_;
+  }
+
+  StyioAST* getBody() const {
+    return body_;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ResourceMethodDef;
+  }
+
+  const StyioDataType getDataType() const {
+    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+  }
+};
+
+class ResourceOrderAST : public StyioASTTraits<ResourceOrderAST>
+{
+  std::unique_ptr<StyioAST> before_owner_;
+  std::unique_ptr<StyioAST> after_owner_;
+  StyioAST* before_ = nullptr;
+  StyioAST* after_ = nullptr;
+
+  ResourceOrderAST(StyioAST* before, StyioAST* after) :
+      before_owner_(before),
+      after_owner_(after),
+      before_(before_owner_.get()),
+      after_(after_owner_.get()) {
+  }
+
+public:
+  static ResourceOrderAST* Create(StyioAST* before, StyioAST* after) {
+    return new ResourceOrderAST(before, after);
+  }
+
+  StyioAST* getBefore() const {
+    return before_;
+  }
+
+  StyioAST* getAfter() const {
+    return after_;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ResourceOrder;
+  }
+
+  const StyioDataType getDataType() const {
+    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+  }
+};
+
+enum class ResourceSelectorKind
+{
+  Whole,
+  Offset,
+  SliceFrom,
+  SnapshotAll,
+};
+
+class ResourceDeclAST : public StyioASTTraits<ResourceDeclAST>
+{
+public:
+  struct Slot
+  {
+    NameAST* name = nullptr;
+    TypeAST* type = nullptr;
+  };
+
+private:
+  std::vector<std::pair<std::unique_ptr<NameAST>, std::unique_ptr<TypeAST>>> slot_owners_;
+  std::vector<Slot> slots_;
+  std::unique_ptr<BlockAST> driver_owner_;
+  BlockAST* driver_ = nullptr;
+
+  void adopt_slots(std::vector<std::pair<NameAST*, TypeAST*>> owned_slots) {
+    slot_owners_.clear();
+    slots_.clear();
+    slot_owners_.reserve(owned_slots.size());
+    slots_.reserve(owned_slots.size());
+    for (auto& entry : owned_slots) {
+      slot_owners_.emplace_back(
+        std::unique_ptr<NameAST>(entry.first),
+        std::unique_ptr<TypeAST>(entry.second));
+      slots_.push_back(Slot{slot_owners_.back().first.get(), slot_owners_.back().second.get()});
+    }
+  }
+
+  ResourceDeclAST(std::vector<std::pair<NameAST*, TypeAST*>> slots, BlockAST* driver) :
+      driver_owner_(driver),
+      driver_(driver_owner_.get()) {
+    adopt_slots(std::move(slots));
+  }
+
+public:
+  static ResourceDeclAST* Create(std::vector<std::pair<NameAST*, TypeAST*>> slots, BlockAST* driver = nullptr) {
+    return new ResourceDeclAST(std::move(slots), driver);
+  }
+
+  const std::vector<Slot>& getSlots() const {
+    return slots_;
+  }
+
+  BlockAST* getDriver() const {
+    return driver_;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ResourceDecl;
+  }
+
+  const StyioDataType getDataType() const {
+    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+  }
+};
+
+class ResourceRefAST : public StyioASTTraits<ResourceRefAST>
+{
+  std::unique_ptr<NameAST> name_owner_;
+  NameAST* name_ = nullptr;
+  ResourceSelectorKind selector_ = ResourceSelectorKind::Whole;
+  int selector_offset_ = 0;
+  StyioDataType data_type_{StyioDataTypeOption::Undefined, "undefined", 0};
+
+  ResourceRefAST(NameAST* name, ResourceSelectorKind selector, int selector_offset) :
+      name_owner_(name),
+      name_(name_owner_.get()),
+      selector_(selector),
+      selector_offset_(selector_offset) {
+  }
+
+public:
+  static ResourceRefAST* Create(NameAST* name) {
+    return new ResourceRefAST(name, ResourceSelectorKind::Whole, 0);
+  }
+
+  static ResourceRefAST* CreateSelector(NameAST* name, ResourceSelectorKind selector, int selector_offset = 0) {
+    return new ResourceRefAST(name, selector, selector_offset);
+  }
+
+  NameAST* getName() const {
+    return name_;
+  }
+
+  std::string getNameStr() const {
+    return name_ == nullptr ? std::string() : name_->getAsStr();
+  }
+
+  ResourceSelectorKind getSelectorKind() const {
+    return selector_;
+  }
+
+  int getSelectorOffset() const {
+    return selector_offset_;
+  }
+
+  bool isWholeResource() const {
+    return selector_ == ResourceSelectorKind::Whole;
+  }
+
+  void setDataType(StyioDataType type) {
+    data_type_ = std::move(type);
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ResourceRef;
+  }
+
+  const StyioDataType getDataType() const {
+    return data_type_;
   }
 };
 
@@ -2473,7 +2842,7 @@ public:
 };
 
 /*
-  M5: @file{"path"} or @{"path"} (auto)
+  File resources: @file("path") or @{"path"} (auto)
 */
 class FileResourceAST : public StyioASTTraits<FileResourceAST>
 {
@@ -2510,14 +2879,16 @@ public:
 };
 
 /*
-  M9: @stdout, @stderr, @stdin
+  Standard stream resources: @stdout, @stderr, @stdin
 */
 class StdStreamAST : public StyioASTTraits<StdStreamAST>
 {
   StdStreamKind kind_;
+  bool terminal_handle_ = false;
 
-  explicit StdStreamAST(StdStreamKind k) :
-      kind_(k) {
+  explicit StdStreamAST(StdStreamKind k, bool terminal_handle = false) :
+      kind_(k),
+      terminal_handle_(terminal_handle) {
   }
 
 public:
@@ -2525,8 +2896,16 @@ public:
     return new StdStreamAST(k);
   }
 
+  static StdStreamAST* CreateTerminalHandle(StdStreamKind k) {
+    return new StdStreamAST(k, true);
+  }
+
   StdStreamKind getStreamKind() const {
     return kind_;
+  }
+
+  bool isTerminalHandle() const {
+    return terminal_handle_;
   }
 
   const StyioNodeType getNodeType() const {
@@ -2692,7 +3071,112 @@ public:
   }
 };
 
-/* M6: pulse state ledger */
+class ResourceEffectAST : public StyioASTTraits<ResourceEffectAST>
+{
+public:
+  struct Handler {
+    std::string effect_name;
+    std::unique_ptr<StyioAST> body_owner;
+    StyioAST* body = nullptr;
+
+    Handler(std::string effect, StyioAST* handler_body) :
+        effect_name(std::move(effect)),
+        body_owner(handler_body),
+        body(body_owner.get()) {
+    }
+
+    Handler(Handler&&) noexcept = default;
+    Handler& operator=(Handler&&) noexcept = default;
+    Handler(const Handler&) = delete;
+    Handler& operator=(const Handler&) = delete;
+  };
+
+private:
+  std::unique_ptr<StyioAST> operation_owner_;
+  std::unique_ptr<StyioAST> fallback_owner_;
+  std::vector<Handler> handlers_;
+
+  StyioAST* operation_ = nullptr;
+  StyioAST* fallback_ = nullptr;
+  bool discard_ = false;
+  bool value_required_ = false;
+  StyioDataType result_type_{StyioDataTypeOption::Undefined, "undefined", 0};
+
+  ResourceEffectAST(
+    StyioAST* operation,
+    StyioAST* fallback,
+    bool discard,
+    std::vector<Handler> handlers,
+    bool value_required
+  ) :
+      operation_owner_(operation),
+      fallback_owner_(fallback),
+      handlers_(std::move(handlers)),
+      operation_(operation_owner_.get()),
+      fallback_(fallback_owner_.get()),
+      discard_(discard),
+      value_required_(value_required) {
+  }
+
+public:
+  static ResourceEffectAST* Create(
+    StyioAST* operation,
+    StyioAST* fallback = nullptr,
+    bool discard = false,
+    std::vector<Handler> handlers = {},
+    bool value_required = false
+  ) {
+    return new ResourceEffectAST(
+      operation,
+      fallback,
+      discard,
+      std::move(handlers),
+      value_required
+    );
+  }
+
+  StyioAST* getOperation() {
+    return operation_;
+  }
+
+  bool hasFallback() const {
+    return fallback_ != nullptr;
+  }
+
+  StyioAST* getFallback() {
+    return fallback_;
+  }
+
+  const std::vector<Handler>& getHandlers() const {
+    return handlers_;
+  }
+
+  bool hasHandlers() const {
+    return !handlers_.empty();
+  }
+
+  bool isDiscard() const {
+    return discard_;
+  }
+
+  bool isValueRequired() const {
+    return value_required_;
+  }
+
+  void setResultType(StyioDataType type) {
+    result_type_ = std::move(type);
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ResourceEffect;
+  }
+
+  const StyioDataType getDataType() const {
+    return result_type_;
+  }
+};
+
+/* State resources: pulse state ledger */
 class StateRefAST : public StyioASTTraits<StateRefAST>
 {
   std::unique_ptr<NameAST> name_owner_;
@@ -2809,9 +3293,7 @@ public:
   }
 };
 
-/*
-  @[window | name = init](export = expr)
-*/
+/* Internal retired-state ledger node kept for lowering and ownership tests. */
 class StateDeclAST : public StyioASTTraits<StateDeclAST>
 {
   std::unique_ptr<IntAST> window_header_owner_;
@@ -2820,9 +3302,9 @@ class StateDeclAST : public StyioASTTraits<StateDeclAST>
   std::unique_ptr<VarAST> export_var_owner_;
   std::unique_ptr<StyioAST> update_expr_owner_;
 
-  /* window-only header: e.g. @[3] */
+  /* window-only retired-state header */
   IntAST* window_header_ = nullptr;
-  /* accumulator: @[total = 0] */
+  /* accumulator retired-state header */
   NameAST* acc_name_ = nullptr;
   StyioAST* acc_init_ = nullptr;
   /* (export = rhs) */
@@ -2958,6 +3440,90 @@ public:
   }
 };
 
+class ExportDeclAST : public StyioASTTraits<ExportDeclAST>
+{
+  vector<string> Symbols;
+
+public:
+  explicit ExportDeclAST(vector<string> symbols) :
+      Symbols(std::move(symbols)) {
+  }
+
+  static ExportDeclAST* Create(vector<string> symbols) {
+    return new ExportDeclAST(std::move(symbols));
+  }
+
+  const vector<string>& getSymbols() const {
+    return Symbols;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ExportDecl;
+  }
+
+  const StyioDataType getDataType() const {
+    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+  }
+};
+
+class ExternBlockAST : public StyioASTTraits<ExternBlockAST>
+{
+  string Abi;
+  string Body;
+  vector<string> SourcePaths;
+  vector<string> ExportedSymbols;
+
+public:
+  ExternBlockAST(
+    string abi,
+    string body,
+    vector<string> source_paths = {},
+    vector<string> exported_symbols = {}
+  ) :
+      Abi(std::move(abi)),
+      Body(std::move(body)),
+      SourcePaths(std::move(source_paths)),
+      ExportedSymbols(std::move(exported_symbols)) {
+  }
+
+  static ExternBlockAST* Create(
+    string abi,
+    string body,
+    vector<string> source_paths = {},
+    vector<string> exported_symbols = {}
+  ) {
+    return new ExternBlockAST(
+      std::move(abi),
+      std::move(body),
+      std::move(source_paths),
+      std::move(exported_symbols));
+  }
+
+  const string& getAbi() const {
+    return Abi;
+  }
+
+  const string& getBody() const {
+    return Body;
+  }
+
+  const vector<string>& getSourcePaths() const {
+    return SourcePaths;
+  }
+
+  const vector<string>& getExportedSymbols() const {
+    return ExportedSymbols;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::ExternBlock;
+  }
+
+  const StyioDataType getDataType() const {
+    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+  }
+};
+
 /*
   =================
     Abstract Level: Block
@@ -3042,10 +3608,10 @@ public:
     For each step of iteration, typeInfer if the element match the value
   expression, if match case is true, then execute the branch.
 
-  MatchCases: Fill + Cases
-    >> Element(Single) ?= {
-      v0 => {}
-      v1 => {}
+    MatchCases: Fill + Cases
+      >> Element(Single) ?= {
+      value_first => {}
+      value_next => {}
       _  => {}
     }
 
@@ -3204,6 +3770,7 @@ class MatchCasesAST : public StyioASTTraits<MatchCasesAST>
 
   StyioAST* Value = nullptr;
   CasesAST* Cases = nullptr;
+  StyioDataType inferred_type_ = StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
 
 public:
   /* v ?= { _ => ... } */
@@ -3219,7 +3786,11 @@ public:
   }
 
   const StyioDataType getDataType() const {
-    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+    return inferred_type_;
+  }
+
+  void setDataType(StyioDataType type) {
+    inferred_type_ = std::move(type);
   }
 
   static MatchCasesAST* make(StyioAST* value, CasesAST* cases) {
@@ -4089,7 +4660,7 @@ public:
 */
 
 /*
-  Infinite / while loop: [...] => { } or [...] ?(cond) >> { }
+  Infinite / while loop: [...] => { } or [...] >> ?(cond) => { }
 */
 class InfiniteLoopAST : public StyioASTTraits<InfiniteLoopAST>
 {
@@ -4114,7 +4685,8 @@ public:
     return new InfiniteLoopAST(cond, body);
   }
 
-  /* Legacy empty loop (unused list/loop char parser path). */
+  // MIGRATION-NEEDED: M-SEMA-01 (docs/rollups/MIGRATION-LEDGER.md)
+  // Legacy empty loop kept for the unused list/loop char parser path.
   static InfiniteLoopAST* Create() {
     return new InfiniteLoopAST(nullptr, BlockAST::Create({}));
   }
@@ -4369,10 +4941,15 @@ class InstantPullAST : public StyioASTTraits<InstantPullAST>
 {
   std::unique_ptr<StyioAST> resource_owner_;
   StyioAST* resource_ = nullptr;
+  StyioDataType result_type_{StyioDataTypeOption::Integer, "i64", 64};
 
-  explicit InstantPullAST(StyioAST* r) :
+  explicit InstantPullAST(
+    StyioAST* r,
+    StyioDataType result_type = StyioDataType{StyioDataTypeOption::Integer, "i64", 64}
+  ) :
       resource_owner_(r),
-      resource_(resource_owner_.get()) {
+      resource_(resource_owner_.get()),
+      result_type_(std::move(result_type)) {
   }
 
 public:
@@ -4380,7 +4957,13 @@ public:
     return new InstantPullAST(r);
   }
 
-  /* Legacy convenience: still accepts FileResourceAST* */
+  static InstantPullAST* Create(StyioAST* r, StyioDataType result_type) {
+    return new InstantPullAST(r, std::move(result_type));
+  }
+
+  // MIGRATION-NEEDED: M-SEMA-01 (docs/rollups/MIGRATION-LEDGER.md)
+  // Legacy convenience overload retained while the FileResourceAST* path
+  // is still in use; remove together with InfiniteAST/ReadFileAST cleanup.
   static InstantPullAST* Create(FileResourceAST* r) {
     return new InstantPullAST(static_cast<StyioAST*>(r));
   }
@@ -4394,35 +4977,173 @@ public:
   }
 
   const StyioDataType getDataType() const {
-    return StyioDataType{StyioDataTypeOption::Integer, "i64", 64};
+    return result_type_;
+  }
+
+  void setResultType(StyioDataType type) {
+    result_type_ = std::move(type);
   }
 };
 
-class TypedStdinListAST : public StyioASTTraits<TypedStdinListAST>
+class TaskBlockAST : public StyioASTTraits<TaskBlockAST>
 {
-  std::unique_ptr<TypeAST> list_type_owner_;
-  TypeAST* list_type_ = nullptr;
+  std::unique_ptr<BlockAST> body_owner_;
+  BlockAST* body_ = nullptr;
+  StyioDataType result_type_{StyioDataTypeOption::Undefined, "undefined", 0};
 
-  explicit TypedStdinListAST(TypeAST* t) :
-      list_type_owner_(t),
-      list_type_(list_type_owner_.get()) {
+  explicit TaskBlockAST(BlockAST* body) :
+      body_owner_(body),
+      body_(body_owner_.get()) {
   }
 
 public:
-  static TypedStdinListAST* Create(TypeAST* t) {
-    return new TypedStdinListAST(t);
+  static TaskBlockAST* Create(BlockAST* body) {
+    return new TaskBlockAST(body);
   }
 
-  TypeAST* getListType() {
-    return list_type_;
+  BlockAST* getBody() {
+    return body_;
+  }
+
+  void setResultType(StyioDataType type) {
+    result_type_ = std::move(type);
+  }
+
+  const StyioDataType& getResultType() const {
+    return result_type_;
   }
 
   const StyioNodeType getNodeType() const {
-    return StyioNodeType::TypedStdinList;
+    return StyioNodeType::TaskBlock;
   }
 
   const StyioDataType getDataType() const {
-    return list_type_->getDataType();
+    if (result_type_.option == StyioDataTypeOption::Undefined) {
+      return styio_make_task_type("unit");
+    }
+    return styio_make_task_type(result_type_.name);
+  }
+};
+
+class TaskGroupLaunchAST : public StyioASTTraits<TaskGroupLaunchAST>
+{
+  std::vector<std::unique_ptr<StyioAST>> entry_owners_;
+  std::vector<StyioAST*> entries_;
+
+  explicit TaskGroupLaunchAST(std::vector<StyioAST*> entries) {
+    entry_owners_.reserve(entries.size());
+    entries_.reserve(entries.size());
+    for (auto* entry : entries) {
+      entry_owners_.emplace_back(entry);
+      entries_.push_back(entry_owners_.back().get());
+    }
+  }
+
+public:
+  static TaskGroupLaunchAST* Create(std::vector<StyioAST*> entries) {
+    return new TaskGroupLaunchAST(std::move(entries));
+  }
+
+  const std::vector<StyioAST*>& getEntries() const {
+    return entries_;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::TaskGroupLaunch;
+  }
+
+  const StyioDataType getDataType() const {
+    return StyioDataType{StyioDataTypeOption::Undefined, "undefined", 0};
+  }
+};
+
+class FlowBindAST : public StyioASTTraits<FlowBindAST>
+{
+  std::unique_ptr<StyioAST> source_owner_;
+  std::unique_ptr<VarAST> target_owner_;
+  std::unique_ptr<StyioAST> fallback_owner_;
+  StyioAST* source_ = nullptr;
+  VarAST* target_ = nullptr;
+  StyioAST* fallback_ = nullptr;
+  bool pull_direction_ = false;
+  bool declare_target_ = false;
+  bool await_bind_ = false;
+  StyioDataType result_type_{StyioDataTypeOption::Undefined, "undefined", 0};
+
+  FlowBindAST(
+    StyioAST* source,
+    VarAST* target,
+    bool pull_direction,
+    bool declare_target,
+    bool await_bind,
+    StyioAST* fallback = nullptr
+  ) :
+      source_owner_(source),
+      target_owner_(target),
+      fallback_owner_(fallback),
+      source_(source_owner_.get()),
+      target_(target_owner_.get()),
+      fallback_(fallback_owner_.get()),
+      pull_direction_(pull_direction),
+      declare_target_(declare_target),
+      await_bind_(await_bind) {
+  }
+
+public:
+  static FlowBindAST* Create(StyioAST* source, VarAST* target, bool pull_direction = false) {
+    return new FlowBindAST(source, target, pull_direction, false, false);
+  }
+
+  static FlowBindAST* CreateAwait(StyioAST* source, VarAST* target, StyioAST* fallback = nullptr) {
+    return new FlowBindAST(source, target, false, true, true, fallback);
+  }
+
+  StyioAST* getSource() {
+    return source_;
+  }
+
+  VarAST* getTarget() {
+    return target_;
+  }
+
+  bool isPullDirection() const {
+    return pull_direction_;
+  }
+
+  bool declaresTarget() const {
+    return declare_target_;
+  }
+
+  bool isAwaitBind() const {
+    return await_bind_;
+  }
+
+  bool hasFallback() const {
+    return fallback_ != nullptr;
+  }
+
+  StyioAST* getFallback() {
+    return fallback_;
+  }
+
+  const std::string& getTargetNameAsStr() {
+    return target_->getNameAsStr();
+  }
+
+  void setResultType(StyioDataType type) {
+    result_type_ = std::move(type);
+  }
+
+  const StyioDataType& getResultType() const {
+    return result_type_;
+  }
+
+  const StyioNodeType getNodeType() const {
+    return StyioNodeType::FlowBind;
+  }
+
+  const StyioDataType getDataType() const {
+    return result_type_;
   }
 };
 

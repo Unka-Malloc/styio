@@ -2,7 +2,7 @@
 
 **Purpose:** 约束 AI 与人类贡献者在 **编译器实现、测试与文档交叉引用** 上的操作规程与禁止项；**语言权威语义**仍以 `../design/Styio-Language-Design.md`、`../design/Styio-EBNF.md` 为准。文档目录与「最小改动 / SSOT」准则见 `DOCUMENTATION-POLICY.md` §0。
 
-**Last updated:** 2026-04-15
+**Last updated:** 2026-05-10
 
 **Version:** 1.1  
 **Date:** 2026-03-28  
@@ -54,14 +54,15 @@ Before making any language-level change, agents MUST read:
 - `../design/Styio-Language-Design.md` — Full language specification
 - `../design/Styio-EBNF.md` — Formal grammar
 - `../design/Styio-Symbol-Reference.md` — Symbol lookup table
-- `../design/Styio-StdLib-Intrinsics.md` — Standard library algorithms
+- `../design/Styio-StdLib-Intrinsics.md` — compiler intrinsic and standard-library boundary evidence
 - `../design/Styio-Resource-Driver.md` — Resource driver interface
 - `../design/Styio-Research-Innovations.md` — Research novelty points (do not break these)
-- `./DOCUMENTATION-POLICY.md` — Doc layout, **§0** maintenance (minimal change, three-doc SSOT), history/milestones/test-catalog rules
+- `./DOCUMENTATION-POLICY.md` — Doc layout, **§0** maintenance (minimal change, three-doc SSOT), history/checkpoint/feature-test rules
 - `./PRINCIPLES-AND-OBJECTIVES.md` — Project-wide priority order, rewrite boundary, and lifecycle objectives
-- `../assets/workflow/CHECKPOINT-WORKFLOW.md` — Interrupt-friendly checkpoint process (micro-milestones, recovery notes, ADR requirement)
+- `../../workflows/CHECKPOINT-WORKFLOW.md` — Interrupt-friendly checkpoint process (feature slices, recovery notes, ADR requirement)
+- `../../workflows/TEAM-RUNBOOK-MAINTENANCE-GATE.md` — Delivery gate requiring mapped team runbooks to be updated and kept in the documented template shape when owned folders change
 - `../adr/README.md` — ADR index for ownership/lifecycle/API decisions
-- `../assets/workflow/TEST-CATALOG.md` — Functional test map (inputs, oracles, `ctest` commands)
+- `../../workflows/TEST-CATALOG.md` — Functional test map (inputs, oracles, `ctest` commands)
 - `../README.md` — Docs taxonomy and directory entrypoints
 
 ---
@@ -74,7 +75,6 @@ Styio/
 ├── .clang-format               # C++ formatting rules (MUST use)
 ├── .gitignore
 ├── README.md
-├── extend_tests.py             # Test scaffolding script
 │
 ├── docs/                       # Project documentation root
 │   ├── README.md               # Taxonomy and entrypoints
@@ -95,7 +95,6 @@ Styio/
 │   │   ├── workflow/           # Reusable workflows, test framework docs, repo hygiene
 │   │   └── templates/          # Reusable templates
 │   ├── history/                # docs/history/YYYY-MM-DD.md — daily dev notes
-│   ├── milestones/             # docs/milestones/YYYY-MM-DD/ — frozen milestone specs
 │   └── adr/                    # Architecture Decision Records
 │
 ├── src/                        # Compiler source code
@@ -118,18 +117,21 @@ Styio/
 │   │   ├── AST.hpp             # StyioAST base class + all concrete AST nodes
 │   │   └── ASTDecl.hpp         # Forward declarations for all AST classes
 │   │
-│   ├── StyioAnalyzer/          # Semantic analysis
-│   │   ├── ASTAnalyzer.hpp     # StyioAnalyzer visitor class
-│   │   ├── TypeInfer.cpp       # Type inference visitor implementations
-│   │   ├── ToStyioIR.cpp       # AST → StyioIR lowering visitor
-│   │   ├── DFAImpl.hpp         # Data flow analysis helpers
-│   │   └── Util.hpp            # Analyzer utilities
+│   ├── StyioSema/              # Semantic analysis and type inference
+│   │   ├── SemaContext.hpp     # Shared visitor context and typeInfer overloads
+│   │   └── TypeInfer.cpp       # Type inference visitor implementations
+│   │
+│   ├── StyioLowering/          # AST → StyioIR lowering
+│   │   ├── AstToStyioIRLowerer.hpp
+│   │   └── AstToStyioIR.cpp
 │   │
 │   ├── StyioIR/                # Styio intermediate representation
 │   │   ├── StyioIR.hpp         # IR base classes
 │   │   ├── IRDecl.hpp          # IR node forward declarations
-│   │   ├── GenIR/GenIR.hpp     # General IR node definitions
-│   │   └── IOIR/IOIR.hpp       # I/O-specific IR nodes
+│   │   ├── GenIR/GenIR.hpp     # General IR node aggregator
+│   │   ├── GenIR/SGIR.hpp      # General IR (default) nodes
+│   │   ├── GenIR/SIOIR.hpp     # I/O / std-stream / file IR nodes
+│   │   └── GenIR/SCIR.hpp      # Collection IR nodes (list/dict/matrix)
 │   │
 │   ├── StyioCodeGen/           # LLVM IR generation
 │   │   ├── CodeGenVisitor.hpp  # StyioToLLVM visitor class
@@ -140,8 +142,11 @@ Styio/
 │   │   └── GetTypeIO.cpp       # LLVM type resolution (I/O)
 │   │
 │   ├── StyioJIT/               # JIT execution
-│   │   ├── StyioJIT_ORC.hpp    # LLVM ORC JIT wrapper
-│   │   └── JITExecutor.hpp     # Execution entry point
+│   │   └── StyioJIT_ORC.hpp    # LLVM ORC JIT wrapper
+│   │
+│   ├── StyioNative/            # C/C++ @extern signature parsing, native compilation, dlopen/dlsym loading
+│   │   ├── NativeInterop.hpp
+│   │   └── NativeInterop.cpp
 │   │
 │   ├── StyioToString/          # AST pretty-printing
 │   │   ├── ToStringVisitor.hpp # Variadic template visitor
@@ -157,30 +162,16 @@ Styio/
 │   ├── StyioUtil/              # Shared utilities
 │   │   └── Util.hpp
 │   │
-│   └── Deprecated/             # Old code kept for reference (DO NOT USE)
-│       ├── Parser_Deprecated.cpp
-│       ├── GetTypeImpl.cpp
-│       ├── CodeGenImpl.cpp
-│       └── CodeGenVisitor.hpp
 │
 └── tests/                      # Test suite
     ├── CMakeLists.txt           # GoogleTest setup
     ├── styio_test.cpp           # GoogleTest C++ tests
-    ├── parsing/                 # .styio fixture files organized by feature
-    │   ├── basic_exprs/
-    │   ├── binding/
-    │   ├── binop/
-    │   ├── boolean/
-    │   ├── brainfuck/
-    │   ├── collections/
-    │   ├── fmtstr/
-    │   ├── forward/
-    │   ├── func/
-    │   ├── listop/
-    │   ├── print/
-    │   └── resources/
-    ├── type_checking/           # Type system test fixtures
-    └── tpc-h/                   # TPC-H benchmark fixtures
+    ├── features/                # CTest-registered language feature fixtures
+    ├── algorithms/              # Styio/C++ algorithm equivalence fixtures
+    ├── fuzz/                    # Fuzz targets, corpus, and smoke harnesses
+    ├── ide/                     # IDE and LSP tests
+    ├── security/                # Security and safety tests
+    └── cmake/                   # CTest helper scripts
 ```
 
 ---
@@ -206,13 +197,13 @@ Source (.styio)
     │
     ▼
 ┌──────────────────┐
-│  3. Type Infer   │  StyioAnalyzer::typeInfer(MainBlockAST*)
+│  3. Type Infer   │  StyioSemaContext::typeInfer(MainBlockAST*)
 │     (Sema)       │  Mutates AST data types in-place
 └──────────────────┘
     │
     ▼
 ┌──────────────────┐
-│  4. IR Lowering  │  StyioAnalyzer::toStyioIR(MainBlockAST*)
+│  4. IR Lowering  │  AstToStyioIRLowerer::toStyioIR(MainBlockAST*)
 │                  │  Produces: StyioIR* tree
 └──────────────────┘
     │
@@ -329,16 +320,15 @@ Group includes with section comments:
 
 ## 5. How to Add a New Token
 
-When the language design introduces a new symbol (e.g., `<~`, `~>`, `??`):
+When the language design introduces a new symbol (e.g., `??`, `<:`, `||>`):
 
 ### Step 1: Define Token Type
 
 In `src/StyioToken/Token.hpp`, add to the `StyioTokenType` enum:
 
 ```cpp
-TOK_WAVE_LEFT = /* next available value */,   // <~
-TOK_WAVE_RIGHT = /* next available value */,  // ~>
-TOK_DBQUESTION = /* next available value */,  // ??
+TOK_NEW_SYMBOL = /* next available value */,  // spelling
+TOK_DBQUESTION = /* next available value */,   // ??
 ```
 
 ### Step 2: Add to Token Map
@@ -347,7 +337,7 @@ If the token is a multi-character compound, add it to `StyioTokenMap` in `Token.
 
 ### Step 3: Implement Lexer Recognition
 
-In `src/StyioParser/Tokenizer.cpp`, add recognition logic in the appropriate character dispatch section. Follow the **maximal munch principle**: when the lexer sees `<`, it must look ahead to distinguish `<`, `<-`, `<~`, `<|`, `<=`, `<:`, `<<`.
+In `src/StyioParser/Tokenizer.cpp`, add recognition logic in the appropriate character dispatch section. Follow the **maximal munch principle**: when the lexer sees `<`, it must look ahead to distinguish `<`, `<-`, `<|`, `<=`, `<:`, `<<`, and reserved compound tokens.
 
 ### Step 4: Add String Representation
 
@@ -355,7 +345,7 @@ Update `getTokName()` in `Token.hpp` or `Token.cpp` so that debug printing shows
 
 ### Step 5: Write Lexer Test
 
-Create a `.styio` file in `tests/parsing/` that uses the new token. Verify it tokenizes correctly using `--debug` mode.
+Create a `.styio` feature fixture under `tests/features/<feature>/` that uses the new token, add the expected oracle when needed, and wire it through `tests/CMakeLists.txt`. Use focused `ctest` selectors as the acceptance harness.
 
 ---
 
@@ -366,9 +356,9 @@ Create a `.styio` file in `tests/parsing/` that uses the new token. Verify it to
 Add an entry to `StyioNodeType` in `src/StyioToken/Token.hpp`:
 
 ```cpp
-WaveExpr,       // <~ or ~> conditional wave expression
-StateDeclExpr,  // @[...] state container declaration
-StateRefExpr,   // $var shadow variable reference
+ExampleExpr,    // replace with the new AST concept
+ResourceDeclExpr,  // @name : Type resource declaration
+ResourceMethodExpr,  // @file::name resource-family member
 ```
 
 ### Step 2: Forward-Declare
@@ -380,27 +370,19 @@ Add the class name to `src/StyioAST/ASTDecl.hpp` in the appropriate section.
 In `src/StyioAST/AST.hpp`, define the class using CRTP:
 
 ```cpp
-class WaveExprAST : public StyioASTTraits<WaveExprAST>
+class ExampleExprAST : public StyioASTTraits<ExampleExprAST>
 {
 private:
-  StyioAST *condition;
-  StyioAST *true_expr;
-  StyioAST *false_expr;
-  bool is_dispatch;  // true = ~>, false = <~
+  StyioAST *input;
   StyioDataType data_type;
 
 public:
-  static WaveExprAST *Create(
-    StyioAST *condition,
-    StyioAST *true_expr,
-    StyioAST *false_expr,
-    bool is_dispatch
-  ) {
-    return new WaveExprAST(condition, true_expr, false_expr, is_dispatch);
+  static ExampleExprAST *Create(StyioAST *input) {
+    return new ExampleExprAST(input);
   }
 
   const StyioNodeType getNodeType() const override {
-    return StyioNodeType::WaveExpr;
+    return StyioNodeType::ExampleExpr;
   }
 
   const StyioDataType getDataType() const override {
@@ -408,14 +390,10 @@ public:
   }
 
   // Accessors
-  StyioAST *getCondition() { return condition; }
-  StyioAST *getTrueExpr() { return true_expr; }
-  StyioAST *getFalseExpr() { return false_expr; }
-  bool isDispatch() { return is_dispatch; }
+  StyioAST *getInput() { return input; }
 
 private:
-  WaveExprAST(StyioAST *cond, StyioAST *t, StyioAST *f, bool disp)
-    : condition(cond), true_expr(t), false_expr(f), is_dispatch(disp) {}
+  ExampleExprAST(StyioAST *value) : input(value) {}
 };
 ```
 
@@ -424,8 +402,9 @@ private:
 You MUST add the new type to **every** visitor template list. If you miss one, the compiler will fail with a cryptic template error.
 
 Files to update:
-1. `src/StyioToString/ToStringVisitor.hpp` — Add to `ToStringVisitor<...>` type list AND implement `toString(WaveExprAST*, int)` in `ToString.cpp`
-2. `src/StyioAnalyzer/ASTAnalyzer.hpp` — Add to `AnalyzerVisitor<...>` type list AND implement `typeInfer(WaveExprAST*)` in `TypeInfer.cpp` AND implement `toStyioIR(WaveExprAST*)` in `ToStyioIR.cpp`
+1. `src/StyioToString/ToStringVisitor.hpp` — Add to `ToStringVisitor<...>` type list AND implement `toString(ExampleExprAST*, int)` in `ToString.cpp`
+2. `src/StyioSema/SemaContext.hpp` — Add to `AnalyzerVisitor<...>` type list AND implement `typeInfer(ExampleExprAST*)` in `src/StyioSema/TypeInfer.cpp`
+3. `src/StyioLowering/AstToStyioIRLowerer.hpp` — Add the lowering overload AND implement `toStyioIR(ExampleExprAST*)` in `src/StyioLowering/AstToStyioIR.cpp`
 
 ### Step 5: Write Parser Support
 
@@ -459,29 +438,21 @@ SomeASTNode* parse_something(StyioContext& context);
 
 1. **Declare** in `src/StyioParser/Parser.hpp`:
    ```cpp
-   WaveExprAST* parse_wave_expr(StyioContext& context, StyioAST* left);
+   ExampleExprAST* parse_example_expr(StyioContext& context, StyioAST* left);
    ```
 
 2. **Implement** in `src/StyioParser/Parser.cpp`:
    ```cpp
-   WaveExprAST*
-   parse_wave_expr(StyioContext& context, StyioAST* left) {
-     // `left` is the condition expression already parsed
-     // Current token is <~ or ~>
-     bool is_dispatch = (context.cur_tok().getType() == StyioTokenType::TOK_WAVE_RIGHT);
-     context.move_forward();  // consume <~ or ~>
-
-     StyioAST* true_expr = parse_expression(context);
-
-     context.check_drop(StyioTokenType::TOK_PIPE_SINGLE);  // consume |
-
-     StyioAST* false_expr = parse_expression(context);
-
-     return WaveExprAST::Create(left, true_expr, false_expr, is_dispatch);
+   ExampleExprAST*
+   parse_example_expr(StyioContext& context, StyioAST* left) {
+     context.move_forward();  // consume the new token
+     StyioAST* rhs = parse_expression(context);
+     (void)left;
+     return ExampleExprAST::Create(rhs);
    }
    ```
 
-3. **Integrate** into the expression parser. The wave operators have low precedence (below `||`, above `=`). Hook into `parse_stmt_or_expr` or the binary expression precedence climbing logic at the correct level.
+3. **Integrate** into the expression parser at the precedence level documented in `Styio-EBNF.md`. Hook into `parse_stmt_or_expr` or the binary expression precedence climbing logic at the correct level.
 
 ### Disambiguation Rules
 
@@ -494,15 +465,15 @@ When adding parsing logic for ambiguous tokens (e.g., `>>` as pipe vs. continue)
 ### Step 1: Add IR Node (if needed)
 
 If the new AST concept requires a distinct IR representation:
-1. Define in `src/StyioIR/GenIR/GenIR.hpp` (or `IOIR/IOIR.hpp` for I/O nodes)
+1. Define in the right domain header under `src/StyioIR/GenIR/`: general nodes in `SGIR.hpp`, I/O / std-stream / file nodes in `SIOIR.hpp`, collection nodes (list/dict/matrix) in `SCIR.hpp`. `GenIR.hpp` is a compatibility aggregator only.
 2. Forward-declare in `src/StyioIR/IRDecl.hpp`
 
 ### Step 2: Implement IR Lowering
 
-In `src/StyioAnalyzer/ToStyioIR.cpp`, implement:
+In `src/StyioLowering/AstToStyioIR.cpp`, implement:
 
 ```cpp
-StyioIR* StyioAnalyzer::toStyioIR(WaveExprAST* node) {
+StyioIR* AstToStyioIRLowerer::toStyioIR(WaveExprAST* node) {
   // Lower to StyioIR representation
   // ...
 }
@@ -526,7 +497,7 @@ llvm::Value* StyioToLLVM::toLLVMIR(SGWaveExpr* node) {
 ### CodeGen Rules
 
 - **Prefer `select` over `br` + `phi`** for conditional values without side effects
-- **Mark intrinsic implementations as `alwaysinline`**
+- **Use direct LLVM inlining only when that is the implemented intrinsic route; runtime-helper intrinsics must instead name their registered helper boundary**
 - **Never allocate on the heap** from generated code — all state must be stack-allocated or in the pre-allocated state ledger
 - **Respect the type system** — always call `getDataType()` on the AST/IR node to determine the correct LLVM type
 
@@ -534,20 +505,28 @@ llvm::Value* StyioToLLVM::toLLVMIR(SGWaveExpr* node) {
 
 ## 9. How to Add a New Compiler Intrinsic
 
-Compiler intrinsics are recognized selector modes like `[avg, n]`, `[max, n]`, etc.
+Compiler intrinsics are compiler-owned surfaces that need parser, Sema, lowering,
+runtime helper routing, or codegen participation. Current active examples are
+the `avg`/`max` series selector slice and matrix helper calls such as `mat_zeros`,
+`matmul`, `transpose`, `dot`, and `norm`. Do not treat deferred algorithm names
+as accepted behavior until `../design/Styio-StdLib-Intrinsics.md`,
+`workflows/TEST-CATALOG.md`, and the owning tests name implementation evidence.
 
-### Step 1: Define Selector Mode
+### Step 1: Define The Compiler-Owned Surface
 
-Add the mode string to the selector_mode recognition in the parser (e.g., `"avg"`, `"max"`, `"std"`, `"ema"`, `"rsi"`).
+For selector-style intrinsics, add the mode string to the parser only when the
+same checkpoint also adds Sema/lowering/codegen evidence. For call-style
+intrinsics, keep the grammar as ordinary calls and add the compiler-owned
+recognition in Sema/lowering instead.
 
 ### Step 2: Document the Algorithm
 
 Add a full specification to `../design/Styio-StdLib-Intrinsics.md` including:
 - Algorithm pseudocode
-- Time complexity (must be O(1) amortized per pulse)
-- Memory requirements (exact byte count)
-- `@` handling behavior
-- LLVM codegen hints
+- Time and memory behavior only when supported by implementation or measured evidence
+- absence/resource-effect behavior
+- LLVM codegen or runtime-helper route
+- deferred non-goals for nearby unsupported forms
 
 ### Step 3: Implement State Allocation
 
@@ -555,7 +534,10 @@ The intrinsic's state (ring buffer, accumulator, deque) must be allocated as par
 
 ### Step 4: Implement Inline CodeGen
 
-Generate LLVM IR that performs the algorithm directly — no function calls. The generated code must be equivalent to hand-optimized C++.
+Generate LLVM IR directly when the intrinsic requires codegen ownership, or route
+to an explicitly registered runtime helper when the active implementation uses
+that boundary. Record benchmark evidence before adding performance wording about
+the generated path.
 
 ---
 
@@ -572,15 +554,15 @@ Every change MUST include tests for:
 
 ### 10.2 Test File Organization
 
-**Milestone acceptance tests** live under `tests/milestones/m{1..7}/`:
+**Language feature acceptance tests** live under `tests/features/<feature>/`:
 
 - Source: `t*.styio`
 - **Stdout oracle:** `expected/<same_basename>.out` (compared via `styio --file … | cmp -s - …` in CMake)
-- **Registration:** `tests/CMakeLists.txt` (`add_test` + labels `milestone`, `m1`…`m7`)
+- **Registration:** `tests/CMakeLists.txt` (`add_test` + labels `language_feature`, `<feature>`, and optional `<feature>_semantic`)
 
-**Human-readable index:** `../assets/workflow/TEST-CATALOG.md` (must list **input**, **oracle** or side-effect path, and **`ctest -R` / `-L`**). When you add a fixture, update both CMake and the catalog.
+**Human-readable index:** `../../workflows/TEST-CATALOG.md` (must list **input**, **oracle** or side-effect path, and **`ctest -R` / `-L`**). When you add a fixture, update both CMake and the catalog.
 
-**Ad-hoc parsing/scaffolding** may still use `extend_tests.py` and numbered files under `tests/parsing/` if present; do not use that layout for milestone regressions unless those tests are also wired into CTest.
+Do not add numbered `tests/parsing/` or lit-style scaffolding. Current feature regressions must be CTest-wired under `tests/features/`.
 
 ### 10.3 GoogleTest
 
@@ -602,9 +584,9 @@ TEST(Lexer, WaveOperatorTokenization) {
 
 ### 11.1 CMake
 
-The project uses a single top-level `CMakeLists.txt`. Source files are **explicitly listed** (no GLOB).
+The build is orchestrated by the top-level `CMakeLists.txt`, which delegates compiler target definitions to `src/CMakeLists.txt` and shared dependency setup to `cmake/*.cmake`. Source files are **explicitly listed** in `src/cmake/*.cmake` (no GLOB).
 
-**When adding a new `.cpp` file**, you MUST add it to the `add_executable(styio ...)` list in `CMakeLists.txt`.
+**When adding a new `.cpp` file**, you MUST add it to the owning explicit source list under `src/cmake/` (or the closest existing list if that module has not been split yet).
 
 ### 11.2 Dependencies
 
@@ -613,15 +595,15 @@ The project uses a single top-level `CMakeLists.txt`. Source files are **explici
 | Dependency | Version | Purpose |
 |------------|---------|---------|
 | LLVM | 18.1.0+ (CMake) | IR generation, JIT, native target |
-| ICU | System + `FindICU.cmake` | Unicode (`uc`, `i18n`) |
-| GoogleTest | FetchContent zip in `tests/CMakeLists.txt` | Tests only (`styio_test`) |
+| ICU | System + `cmake/FindICU.cmake` | Unicode (`uc`, `i18n`) |
+| GoogleTest | FetchContent zip in `cmake/StyioGoogleTest.cmake` | Tests and benchmark targets only |
 | cxxopts | Vendored `src/include/cxxopts.hpp` | CLI argument parsing |
 
 ### 11.3 Known Issues
 
-1. **`Util.cpp` missing:** `CMakeLists.txt` references `src/StyioUtil/Util.cpp` but the file doesn't exist. Either create it or remove the reference.
-2. **Hardcoded compiler paths:** `CMakeLists.txt` sets `CMAKE_C_COMPILER` etc. to `/usr/bin/clang`. On Windows/macOS, these must be overridden or removed.
-3. **Include paths:** `main.cpp` uses paths like `"StyioAST/AST.hpp"` expecting `src/` on the include path, but this isn't explicitly configured in CMake. The build may rely on the IDE or build directory structure.
+1. **Build layering is transitional:** target names stay stable, but source ownership now lives in `src/cmake/*.cmake`; keep those files synchronized with the real module boundaries.
+2. **External toolchain is still host-provided:** LLVM 18.1.0 and optional ICU remain environment prerequisites rather than vendored dependencies.
+3. **Tree-sitter grammar is generated input:** if `grammar/tree-sitter-styio/src/parser.c` is missing, regenerate it or configure with `-DSTYIO_ENABLE_TREE_SITTER=OFF`.
 
 ---
 
@@ -647,29 +629,35 @@ All documentation is Markdown. Use:
 When showing Styio code examples, use the canonical "Golden Cross" strategy as the reference example. **Design-level topology and narrative** for this pattern: [`../design/Styio-Resource-Topology.md`](../design/Styio-Resource-Topology.md) §8 (SSOT for that story; this subsection keeps the **inline constitution** snippet for agents).
 
 ```
-@binance{"BTCUSDT"} >> #(p) => {
-    # get_ma := (src, n) => src[avg, n]
+@ma5 : f64|..2|, @ma20 : f64|..2| := {
+    @binance("BTCUSDT") >> #(p) => {
+        p[avg, 5]  -> @ma5
+        p[avg, 20] -> @ma20
 
-    @[5 ](ma5  = get_ma(p, 5 ))
-    @[20](ma20 = get_ma(p, 20))
+        is_golden =
+            @ma5[-2] <= @ma20[-2] &&
+            @ma5[-1] >  @ma20[-1]
 
-    is_golden = ($ma5 > $ma20) && ($ma5[<<, 1] <= $ma20[<<, 1])
+        # order_logic := (price) => { >_ ("Buy at: " + price) }
 
-    # order_logic := (price) => { >_ ("Buy at: " + price) }
-
-    (is_golden) ~> order_logic(p) | @
+        ?(is_golden) => {
+            order_logic(p)
+        }
+    }
 }
 ```
 
-This is the "constitution" — any syntax change that breaks this example must be explicitly justified.
+This is the "constitution" — any syntax change that breaks this example must be explicitly justified. The 2026-05-09 revision moved the active example to `Type|..n|` resources, `expr -> @name` sink writes, and resource selectors such as `@ma5[-1]`.
 
-### 12.4 Development history, milestones, and test documentation
+### 12.4 Development history, checkpoints, and test documentation
 
 Follow `./DOCUMENTATION-POLICY.md` (including **§0** — minimal change, three-doc SSOT rule, doc-purpose lines):
 
-- **Progress and lessons learned:** `docs/history/YYYY-MM-DD.md` (one file per calendar day or same-day append), with **Last updated** in the header.
-- **Milestone specs:** `docs/milestones/<YYYY-MM-DD>/` (e.g. `docs/milestones/2026-03-29/00-Milestone-Index.md`).
-- **Test catalog:** `../assets/workflow/TEST-CATALOG.md` — group by **functional area**; each row must be reproducible with **CTest** (and document stdin/stdout/files).
+- **Progress and lessons learned:** durable lessons must be promoted into active rollups, SSOTs, or runbooks; raw dated checkpoint text is recovered from Git history when needed.
+- **Implemented decisions:** `../adr/IMPLEMENTED-DECISIONS.md` keeps a compressed provenance summary; exact old ADR wording comes from Git history.
+- **Test catalog:** `../../workflows/TEST-CATALOG.md` — group by **language feature**; each row must be reproducible with **CTest** (and document stdin/stdout/files).
+- **Team runbooks:** `../teams/<TEAM>-RUNBOOK.md` — every delivery that changes a mapped team-owned folder must update the corresponding runbook when the ownership surface, workflow, gates, handoff, or recovery knowledge changes. Ordinary team runbooks must follow `../assets/templates/TEAM-RUNBOOK-TEMPLATE.md`; the enforcement entrypoint is `../../workflows/TEAM-RUNBOOK-MAINTENANCE-GATE.md` and `python3 scripts/team-docs-gate.py`.
+- **Runbook statistics:** `../teams/DOC-STATS.md` — refresh this file in the same delivery when any team runbook or `COORDINATION-RUNBOOK.md` changes.
 
 ---
 
@@ -680,10 +668,10 @@ Agents working on specific areas should consult:
 | Task | Primary Reference |
 |------|-------------------|
 | Adding syntax | `../design/Styio-EBNF.md` (grammar), `../design/Styio-Symbol-Reference.md` (tokens) |
-| Topology v2 (`@name : [|n|]`, `:= { driver }`, `expr -> $x`) | `../design/Styio-Resource-Topology.md`, `../plans/Resource-Topology-v2-Implementation-Plan.md` (rollout + file matrix), `../review/Logic-Conflicts.md` |
+| Active syntax map | `../design/syntax/ACTIVE-SYNTAX.md` (compact authoring surface) |
+| resource topology (`@name : Type|n|`, `@name : Type|..n|`, `T..`, `expr -> @name`) | `../design/Styio-Resource-Topology.md`, `../design/syntax/ACTIVE-SYNTAX.md`, `../rollups/NEXT-STAGE-GAP-LEDGER.md` |
 | Implementing `@` propagation | `../design/Styio-Language-Design.md` §3.4 (Undefined type) |
-| State containers `@[...]` / `$` | `../design/Styio-Language-Design.md` §8 (State Management) |
-| Wave operators `<~` / `~>` | `../design/Styio-Language-Design.md` §6 (Wave Operators) |
+| Reserved wave tokens `<~` / `~>` | `../design/Styio-Symbol-Reference.md` §3 (reserved tokens) |
 | Stream sync `&` / `<<` | `../design/Styio-Language-Design.md` §9 (Stream Synchronization) |
 | Intrinsic algorithms | `../design/Styio-StdLib-Intrinsics.md` (all algorithms with pseudocode) |
 | Resource drivers | `../design/Styio-Resource-Driver.md` (C++ interface, threading model) |
@@ -703,7 +691,7 @@ Agents MUST NOT:
 
 4. **Modify vendored files.** `src/include/cxxopts.hpp` is third-party. Do not edit it.
 
-5. **Use `Deprecated/` code.** The `src/Deprecated/` directory is archived reference only. Do not include, call, or copy from it.
+5. **Use historical implementation code.** Historical implementation snapshots from Git history are reference-only. Do not include, call, or copy from them without promoting the current rule through the active implementation path.
 
 6. **Skip visitor registration.** Every new AST node MUST be added to ALL visitor template lists. Partial registration causes hard-to-debug template errors.
 
@@ -719,15 +707,15 @@ Agents MUST NOT:
 
 ## 15. Decision Authority
 
-### Current Milestone
+### Current Active Front
 
-Agents must work on the **current active milestone** and not skip ahead. See `docs/milestones/2026-03-29/00-Milestone-Index.md` (and `docs/milestones/README.md` for other dated trees) for the full roadmap. Each milestone document (`M1-Foundation.md` through `M7-MultiStream.md`) defines:
+Agents must work on the **current active front** and not skip ahead. Start from `docs/rollups/CURRENT-STATE.md`, then follow the active checkpoint, plan, and feature-test docs it points to. Historical batch planning text lives in Git history and is provenance only, not the default maintenance input. Each active checkpoint or plan defines:
 
 - **Acceptance tests** — the FIRST thing to read; defines success
 - **Implementation tasks** — ordered by dependency, assigned to roles
 - **Completion criteria** — all tests must pass, no regressions
 
-**No milestone may break tests from a previous milestone.**
+**No checkpoint may break existing feature tests.**
 
 ### What Agents Can Decide Independently
 
@@ -758,7 +746,7 @@ If two agents propose conflicting changes to the same file:
 ## Appendix A: Quick-Start Checklist for New Agents
 
 1. Read this file (`AGENT-SPEC.md`) completely
-2. Read `DOCUMENTATION-POLICY.md` and `../assets/workflow/TEST-CATALOG.md` for where to log work and how tests are named
+2. Read `DOCUMENTATION-POLICY.md` and `../../workflows/TEST-CATALOG.md` for where to log work and how tests are named
 3. Read `../design/Styio-Language-Design.md` for the full language picture
 4. Read `../design/Styio-Symbol-Reference.md` to understand the symbol system
 5. Examine `src/main.cpp` to understand the pipeline flow
@@ -767,9 +755,11 @@ If two agents propose conflicting changes to the same file:
 8. Run the compiler on a test file with `--all` to see all stages
 9. Make your change
 10. Run `clang-format` on modified files
-11. Verify all existing tests still pass (`ctest --test-dir build -L milestone` plus `styio_test` when the build allows)
-12. Add new tests for your change; register in `tests/CMakeLists.txt` and `../assets/workflow/TEST-CATALOG.md`
-13. Update `docs/history/YYYY-MM-DD.md` for non-trivial work; update design docs if syntax or semantics change
+11. Verify all existing tests still pass (`ctest --test-dir build/default -L language_feature` plus `styio_test` when the build allows)
+12. Add new tests for your change; register in `tests/CMakeLists.txt` and `../../workflows/TEST-CATALOG.md`
+13. Update the mapped team runbook using `../assets/templates/TEAM-RUNBOOK-TEMPLATE.md` and refresh `../teams/DOC-STATS.md` when the change affects owned folders or team maintenance knowledge
+14. Update `docs/history/YYYY-MM-DD.md` for non-trivial work; update design docs if syntax or semantics change
+15. Run `python3 scripts/team-docs-gate.py` and `python3 scripts/docs-audit.py` before delivery
 
 ## Appendix B: Compilation Pipeline Debug Flags
 
@@ -796,17 +786,17 @@ Features from the design documents and their current implementation state:
 | Resources (`@`) | §7 | ✅ | ✅ | ✅ | Partial | Partial | — | **In Progress** |
 | Bindings (`:=`, `=`) | §— | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Working** |
 | Collections (list, tuple, set) | §10 | ✅ | ✅ | ✅ | Partial | Partial | Partial | **In Progress** |
-| Format strings (`$"..."`) | §11.3 | ✅ | ✅ | ✅ | Partial | Partial | — | **In Progress** |
-| Wave operators (`<~`, `~>`) | §6 | — | — | — | — | — | — | **Not Started** |
-| State containers (`@[...]`) | §8.2 | — | — | — | — | — | — | **Not Started** |
-| Shadow references (`$var`) | §8.3 | — | — | — | — | — | — | **Not Started** |
-| History probe (`[<<, n]`) | §8.4 | — | — | — | — | — | — | **Not Started** |
-| Pulse Frame Lock | §8.5 | — | — | — | — | — | — | **Not Started** |
-| Break (`^^^^`) | §5.5 | — | — | — | — | — | — | **Not Started** |
+| Format strings (`$"..."`) | §11.3 | ✅ | ✅ | ✅ | ✅ | ✅ | via string concat | **Working** |
+| Reserved wave tokens (`<~`, `~>`) | §3 reserved tokens | ✅ | Rejects active use | — | — | — | — | **Reserved** |
+| Retired state-resource state families | §8.2 | — | Rejects active use | — | — | — | — | **Retired** |
+| Resource topology selectors | §8.4 | ✅ | ✅ | Partial | Partial | Partial | Partial | **In Progress** |
+| Pulse Frame Lock | §8.5 | — | — | — | Partial | Partial | — | **In Progress** |
+| Break (`^...`) | §5.5 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **Working** |
 | Continue (`>>>`) | §5.6 | — | — | — | — | — | — | **Not Started** |
 | Stream Zip (`&`) | §9.1 | — | — | — | — | — | — | **Not Started** |
 | Snapshot Pull (`<< @res`) | §9.2 | — | — | — | — | — | — | **Not Started** |
-| Selector intrinsics (`[avg,n]`) | Intrinsics §2 | — | — | — | — | — | — | **Not Started** |
+| Selector intrinsics (`[avg,n]`, `[max,n]`) | Intrinsics §2 | ✅ | ✅ | ✅ | Partial | Partial | Partial | **Partial: avg/max pulse-state slice only** |
+| Matrix helper intrinsics (`mat_*`, `matmul`, `transpose`, `dot`, `norm`) | Intrinsics / matrix design | ✅ | ordinary calls | ✅ | ✅ | ✅ | ✅ | **Working** |
 | Diagnostic `??` | §12.3 | — | — | — | — | — | — | **Not Started** |
 | Anonymous Ledger | §8.6 | — | — | — | — | — | — | **Not Started** |
 | Context capture `$(...)` | §4.3 | — | — | — | — | — | — | **Not Started** |
