@@ -2,6 +2,10 @@
 build/
 build-*/
 Testing/
+!vityo/frontend/vityo_app/lib/src/view_ide/testing/
+!vityo/frontend/vityo_app/lib/src/view_ide/testing/**
+!vityo/frontend/vityo_app/lib/src/view_render/testing/
+!vityo/frontend/vityo_app/lib/src/view_render/testing/**
 cmake_test_discovery_*.json
 compile_commands.json
 
