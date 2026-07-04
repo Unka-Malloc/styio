@@ -129,7 +129,7 @@ These are not separate runtime kinds; they are predicates over capabilities:
 
 So Styio should check:
 
-- `>>` requires `Iterable[T]`
+- `>>` requires `Iterable[T]` and advances that iterable item by item into the right-side channel/consumer
 - `zip` requires both sides to be `Iterable`
 - single-index `[]` requires `Indexable`
 - range or window selection requires `Sliceable`
@@ -355,6 +355,9 @@ For `expr >> #(x) => body`, typing succeeds iff:
 - `x : T`
 - the block runs on a resource snapshot created at the `>>` boundary
 - block exit commits the snapshot result back to the source resource when the resource family supports commit
+
+The operator transfers iterable items as pulses into the body. It is not a bit-shift,
+single read, or bulk pipe operation.
 
 The same rule should drive:
 

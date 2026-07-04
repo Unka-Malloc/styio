@@ -137,12 +137,12 @@ TOK_DBQUESTION     = '??' ;
 
 ### 2.4 Variable-Length Tokens
 
-These tokens use contiguous repetitions. Break keeps the spelling flexible but does
-not assign semantic depth to the count.
+These tokens use contiguous repetitions. Break and standalone continue keep the
+spelling flexible but do not assign semantic depth to the count.
 
 ```ebnf
 BREAK_TOKEN        = '^' { '^' } ;           (* length >= 1, contiguous, depth = 1 *)
-CONTINUE_TOKEN     = '>' '>' { '>' } ;       (* length >= 2, contiguous, standalone context *)
+CONTINUE_TOKEN     = '>' '>' { '>' } ;       (* length >= 2, contiguous, standalone context, depth = 1 *)
 ```
 
 ### 2.5 Comments
@@ -325,6 +325,11 @@ block              = '{' { statement [ statement_sep ] } [ yield_expr [ statemen
 yield_expr         = '<|' expression
                    | '|<|' expression ;
 ```
+
+In `flow_pipeline`, the `>>` operator is the two-character iterator/pulse transfer
+operator. The `stream_source` side must produce an iterable sequence or pulse stream;
+the operator advances that source one item at a time and pushes each item as a pulse
+into the `consumer`. This is not a bit shift, shell pipe, or single bulk send.
 
 `stream_source guard '>>' consumer` is intentionally not part of the grammar.
 Conditional infinite loops use `[...] >> ?(condition) => { ... }`, so
@@ -545,7 +550,7 @@ resources are still governed by Styio prelude declarations rather than by a C++ 
 Usage patterns (reuse existing productions):
 - `expr '->' '@stdout'` / `expr '->' '@stderr'` — canonical standard-stream write via `resource_redirect`
 - `iterable_expr '>>' '@stdout'` / `iterable_expr '>>' '@stderr'` — standard-stream iterable write via `resource_write`
-- `iterable_expr '>>' terminal_handle` — terminal-handle resource-write shorthand; semantic checks require an iterable, text-serializable value
+- `iterable_expr '>>' terminal_handle` — terminal-handle resource-write shorthand; semantic checks require an iterable, text-serializable value, then advance it item by item into the terminal sink
 - `string_expr '.lines()' '>>' terminal_handle` — explicit newline split before terminal-handle iterable write
 - `'@stdin' '>>' '#' '(' param_list ')' '=>' block` — iterate via `iterator`
 - `'@' 'stdin' ':=' '#' '(' ')' '=>' '{' '<|' terminal_handle '}'` — internal stdin declaration shorthand (`<|[>_]` or `<|(>_)`)
@@ -626,7 +631,7 @@ the StyioIR optimizer before LLVM codegen.
 
 ```ebnf
 break_stmt         = BREAK_TOKEN ;      (* ^ or ^^ or ^^^ etc.; always nearest loop *)
-continue_stmt      = CONTINUE_TOKEN ;   (* >> or >>> or >>>> etc. *)
+continue_stmt      = CONTINUE_TOKEN ;   (* >> or >>> or >>>> etc.; count ignored *)
 ```
 
 ---
@@ -635,10 +640,10 @@ continue_stmt      = CONTINUE_TOKEN ;   (* >> or >>> or >>>> etc. *)
 
 ### Rule 1: `>>` as Pipe vs. Continue
 
-When the parser encounters `>>` (or longer `>>>`, `>>>>`, etc.):
-- If preceded by an expression and followed by `@` resource atom: **Resource-write shorthand**
-- If preceded by an expression and followed by `#(`, `{`, or an identifier: **Pipe operator**
-- If followed by newline, `;`, `}`, or another control token: **Continue statement**
+When the parser encounters `>>` (or a longer contiguous run such as `>>>`, `>>>>`, etc.):
+- If the two-character `>>` spelling is preceded by an expression and followed by `@` resource atom: **Resource-write shorthand**
+- If the two-character `>>` spelling is preceded by an expression and followed by `#(`, `{`, or an identifier: **Pipe operator**. The left side is an iterable or pulse source; the operator pushes each item as a pulse into the right-side channel/consumer.
+- If the token is the only non-trivia item in the statement and is followed by newline, `;`, `}`, or EOF: **Continue statement**. Longer spellings have the same meaning as `>>`; they do not encode nesting depth.
 - If inside `[` brackets: **Stride selector mode**
 
 ### Rule 2: `@` Disambiguation

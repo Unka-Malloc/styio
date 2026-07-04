@@ -41,7 +41,7 @@ The name encodes the language's identity:
 
 ### 2.1 Everything Is a Flow
 
-Styio has no explicit loop constructs (`for`, `while`). Instead, data sources emit **pulses** into **closures** via the pipe operator `>>`. The closure executes once per pulse. Loops emerge naturally from infinite or finite data generators.
+Styio has no explicit loop constructs (`for`, `while`). Instead, data sources emit **pulses** into **closures** via the pipe operator `>>`. In `left >> right`, the left side is an iterable or pulse source; `>>` advances it one item at a time and pushes each item as a pulse into the right-side channel, closure, resource sink, or pipeline stage. The closure executes once per pulse. Loops emerge naturally from infinite or finite data generators.
 
 ### 2.2 Progressive Performance
 
@@ -264,7 +264,7 @@ closed until their value IR and merge semantics are defined.
 ```
 
 - `[...]` — infinite generator
-- `>>` — pipe the generator into the workflow
+- `>>` — pulse the generator one item at a time into the workflow
 - `?(expr) =>` — guard / valve: only passes pulses into the body when `expr` is truthy
 
 ### 6.4 Collection Iteration (For-each-equivalent)
@@ -273,7 +273,7 @@ closed until their value IR and merge semantics are defined.
 [1, 2, 3] >> #(item) => { /* body */ }
 ```
 
-The collection becomes a finite pulse source. Each element is bound to `item`.
+The collection becomes a finite pulse source. `>>` advances the collection one element at a time and pushes each element as a pulse into the closure; each pulse binds one element to `item`.
 
 ### 6.5 Break: `^...` (Immediate Loop)
 
@@ -290,15 +290,18 @@ Rules:
 - `^^ ^^` is **illegal** — it is two adjacent break statements, not a deeper break
 - a break outside an enclosing loop is rejected by code generation
 
-### 6.6 Continue: `>>` (Variable Length, ≥2)
+### 6.6 Continue: `>>...` (Standalone, Variable Length, >=2)
 
 ```
->>      // skip current iteration (1 level)
->>>     // skip 2 levels
->>>>    // skip 3 levels
+>>       // skip the rest of the current block for this pulse/session
+>>>      // same as >>
+>>>>     // same as >>
+>>>>>>   // same as >>
 ```
 
-The base continue is 2 characters (`>>`). Each additional `>` skips one more nesting level. Context distinguishes continue from pipe: continue appears as a **standalone statement** (not connecting source to consumer).
+The base continue spelling is 2 characters (`>>`), and any longer contiguous run of `>` characters has the same meaning when it is a standalone statement. The count of `>` characters has no semantic depth and is normalized to one continue operation.
+
+Context distinguishes continue from pipe: the pipe form connects a left iterable or pulse source to a right channel/consumer (`left >> right`). The continue form is a standalone statement: aside from horizontal whitespace, the `>>...` token is the whole line/statement and is followed by a newline, statement separator, block end, or EOF. In a pulse/session domain, it skips the remaining statements in the current block and resumes at the next pulse/session of the nearest continue-capable domain. Outside such a domain, current code generation rejects it as `continue outside enclosing loop`.
 
 ### 6.7 Yield / Return: `<|`
 
@@ -512,6 +515,8 @@ f <- @file("readme.txt")
 f >> #(chunk: [byte; 4096]) => { buf += chunk }
 ```
 
+For resource reads, `>>` treats the left resource handle as an iterable source and pushes each produced chunk or line as a pulse into the right-side closure.
+
 ### 8.4 Writing: `<<`
 
 ```
@@ -568,9 +573,9 @@ bracketed terminal-handle spelling `[>_]` is canonical:
 | Operation | Canonical symbolic form | Compatibility form | Unix fd | Semantics |
 |-----------|--------------------------|--------------------|---------|-----------|
 | Scalar write | `x -> [>_]` | `x -> (>_)` | fd 1 | Write one scalar/text value to stdout |
-| Iterable write | `xs >> [>_]` | `xs >> (>_)` | fd 1 | Serialize an iterable value to stdout |
+| Iterable write | `xs >> [>_]` | `xs >> (>_)` | fd 1 | Advance `xs` item by item; write each item as a pulse to stdout |
 | Scalar error write | `!(x) -> [>_]` | `!(x) -> (>_)` | fd 2 | Write one scalar/text value to stderr (unbuffered) |
-| Iterable error write | `!(xs) >> [>_]` | `!(xs) >> (>_)` | fd 2 | Serialize an iterable value to stderr (unbuffered) |
+| Iterable error write | `!(xs) >> [>_]` | `!(xs) >> (>_)` | fd 2 | Advance `xs` item by item; write each item as an unbuffered pulse to stderr |
 | Read stream shorthand | `<\|[>_]` | `<\|(>_)` | fd 0 | Return the terminal input stream |
 | Read stream expanded | `<\| <- [>_]` | `<\| <- (>_)` | fd 0 | Pull the terminal input stream, then return it |
 
@@ -581,7 +586,7 @@ data goes to fd 2 (stderr). The compiler disambiguates from logical NOT by conte
 `expr -> [>_]` and `expr -> @stdout` are scalar/text redirects to stdout. `items >> [>_]`
 and `items >> @stdout` are narrower: the left side
 must be an iterable value whose items can be serialized to text, such as `list[T]`, `dict[string,T]`,
-or an explicitly produced line list. Plain `string >> [>_]` and `string >> @stdout` are rejected so the compiler never has
+or an explicitly produced line list. `>>` serializes and writes each item as a separate pulse into the stream sink. Plain `string >> [>_]` and `string >> @stdout` are rejected so the compiler never has
 to guess between character iteration and newline splitting. Use `string -> [>_]` for scalar text,
 or `string.lines() >> [>_]` / `string.lines() >> @stdout` when newline splitting is intended.
 
@@ -637,9 +642,10 @@ stream-sink style is intentional.
 **Compiler recognition:** The compiler recognizes `@stdout`, `@stderr`, `@stdin` directly at
 parse/lowering time and emits FFI-backed standard-stream runtime-helper IR (`styio_stdout_write_cstr`
 for stdout writes, `styio_stderr_write_cstr` for stderr writes, and `styio_stdin_read_line` for
-stdin line reads). Scalar `expr -> @stdout` and iterable `items >> @stdout` both lower through
-the standard-stream write IR family, with the `>>` route requiring text-serializable iterable
-input before lowering.
+stdin line reads). Scalar `expr -> @stdout` lowers directly through the standard-stream write
+IR family. Iterable `items >> @stdout` first expands into a per-item pulse loop, and the loop
+body writes each item through the standard-stream write IR family. The `>>` route requires
+text-serializable iterable input before lowering.
 
 ---
 
