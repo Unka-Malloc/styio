@@ -40,7 +40,7 @@ jobs:
           GITHUB_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          python3 scripts/workflow-scheduler.py run --profile ci-prebuild --skip-tool team-docs-base
+          python3 scripts/workflow-scheduler.py run --profile ci-prebuild --skip-tool team-docs-base --skip-tool ecosystem-cli-docs-workspace
 
       - name: Install dependencies
         run: |
