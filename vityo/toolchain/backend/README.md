@@ -2,7 +2,7 @@
 
 **Purpose:** Define the backend-owned surface that `Vityo` carries locally for toolchain management and status normalization.
 
-**Last updated:** 2026-06-28
+**Last updated:** 2026-04-21
 
 ## Backend Responsibilities
 
@@ -22,13 +22,7 @@ The `Vityo` toolchain backend owns:
 - managed compiler install/use/pin semantics
 - machine-info and capability publication
 
-### From embedded `../styio` in `styio-all-in-one`
-
-- the repo-local compiler binary selected by `all-in-one-styio-language-service`
-- the `styio check --syntax --json --file` syntax-check contract used by the IDE language-service path
-- future config-driven symbol manifests passed through `--config` without making Vityo own compiler semantics
-
-### From `styio-spio`
+### From `styio-pafio`
 
 - project graph and toolchain state payloads
 - dependency and registry state needed by environment/toolchain views
@@ -36,7 +30,7 @@ The `Vityo` toolchain backend owns:
 
 ## Non-Goals
 
-1. no compiler implementation lives in Vityo-owned code; in `styio-all-in-one`, compiler implementation remains owned by sibling `../styio`
+1. no compiler implementation lives here
 2. no package-manager service implementation lives here
 3. no Flutter widget logic or visual state lives here
 4. no repo-private filesystem heuristics should leak into the user-facing contract when a published machine payload exists

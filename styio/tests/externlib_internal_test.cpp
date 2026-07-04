@@ -566,6 +566,13 @@ TEST(StyioExternLibInternal, NullAndWrongKindHandleCastsStayExplicit) {
 TEST(StyioExternLibInternal, TaskSchedulerAndPendingTaskReleaseEdgesStayExplicit) {
   EnvVarGuard threads("STYIO_TASK_THREADS");
   threads.set("128");
+  EnvVarGuard queue_backend("STYIO_USE_MPMC_QUEUE");
+  queue_backend.set("1");
+
+  EXPECT_EQ(
+    StyioTaskScheduler::instance().ready_queue_kind(),
+    styio::runtime::ReadyQueueKind::BoundedMPMC);
+
   std::atomic<bool> start_workers{false};
   std::vector<std::size_t> worker_counts(32, 0);
   std::vector<std::thread> starters;
@@ -589,8 +596,8 @@ TEST(StyioExternLibInternal, TaskSchedulerAndPendingTaskReleaseEdgesStayExplicit
   auto* task = new StyioTask(StyioTaskValueKind::I64);
   ++g_active_task_handles;
   std::thread ready([task]() {
-    task->ready.store(true, std::memory_order_release);
-    task->ready.notify_all();
+    (*task).ready.store(true, std::memory_order_release);
+    (*task).ready.notify_all();
   });
   close_task(task);
   ready.join();

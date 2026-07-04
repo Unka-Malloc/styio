@@ -13,7 +13,7 @@ import 'package:vityo_app/src/platform/platform_target.dart';
 
 void main() {
   test(
-    'execution adapter prefers published spio workflow payloads and preserves JSON program output',
+    'execution adapter prefers published pafio workflow payloads and preserves JSON program output',
     () async {
       final tempRoot = await _createTempRoot(
         'vityo_execution_payload_test_',
@@ -25,7 +25,7 @@ void main() {
             ..createSync(recursive: true)
             ..writeAsStringSync('>_("demo")\n');
 
-      File('${tempRoot.path}${Platform.pathSeparator}spio.toml')
+      File('${tempRoot.path}${Platform.pathSeparator}pafio.toml')
         ..createSync(recursive: true)
         ..writeAsStringSync('''
 [package]
@@ -43,14 +43,14 @@ path = "src/main.styio"
 
       await _writeExecutable(
         File(
-          '${tempRoot.path}${Platform.pathSeparator}.spio${Platform.pathSeparator}bin${Platform.pathSeparator}spio',
+          '${tempRoot.path}${Platform.pathSeparator}.pafio${Platform.pathSeparator}bin${Platform.pathSeparator}pafio',
         ),
         '''#!/usr/bin/env python3
 import json, sys
 
 if sys.argv[1:] == ['machine-info', '--json']:
     print(json.dumps({
-        'tool': 'spio',
+        'tool': 'pafio',
         'feature_flags': {'workflow_success_payloads': True},
         'supported_contract_versions': {'workflow_success_payloads': [1]},
     }))
@@ -66,7 +66,7 @@ if '--json' in sys.argv and 'run' in sys.argv:
         'mode': 'execute',
         'workflow_payload_version': 1,
         'message': 'completed compiler run via payload',
-        'stdout': '{"message":"user-log"}\\n{"a":1}\\nspio-run-ok\\n',
+        'stdout': '{"message":"user-log"}\\n{"a":1}\\npafio-run-ok\\n',
         'stderr': '',
         'diagnostics': [],
         'runtime_session_id': 'runtime-session-1',
@@ -107,7 +107,7 @@ raise SystemExit(64)
         platformTarget: PlatformTarget.macos,
         projectGraph: _projectGraph(
           workspaceRoot: tempRoot.path,
-          manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+          manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
           targets: <ProjectTargetDescriptor>[
             ProjectTargetDescriptor(
               id: 'demo/app:bin:demo',
@@ -122,7 +122,7 @@ raise SystemExit(64)
               packageName: 'demo/app',
               rootPath: tempRoot.path,
               manifestPath:
-                  '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+                  '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
               targets: <ProjectTargetDescriptor>[
                 ProjectTargetDescriptor(
                   id: 'demo/app:bin:demo',
@@ -143,7 +143,7 @@ raise SystemExit(64)
         platformTarget: PlatformTarget.macos,
         projectGraph: _projectGraph(
           workspaceRoot: tempRoot.path,
-          manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+          manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
           targets: <ProjectTargetDescriptor>[
             ProjectTargetDescriptor(
               id: 'demo/app:bin:demo',
@@ -158,7 +158,7 @@ raise SystemExit(64)
               packageName: 'demo/app',
               rootPath: tempRoot.path,
               manifestPath:
-                  '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+                  '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
               targets: <ProjectTargetDescriptor>[
                 ProjectTargetDescriptor(
                   id: 'demo/app:bin:demo',
@@ -191,7 +191,7 @@ raise SystemExit(64)
         containsAll(<String>[
           '{"message":"user-log"}',
           '{"a":1}',
-          'spio-run-ok',
+          'pafio-run-ok',
         ]),
       );
       expect(session.stderrEvents, isEmpty);
@@ -235,7 +235,7 @@ raise SystemExit(64)
             ..createSync(recursive: true)
             ..writeAsStringSync('// lib fixture\n');
 
-      File('${tempRoot.path}${Platform.pathSeparator}spio.toml')
+      File('${tempRoot.path}${Platform.pathSeparator}pafio.toml')
         ..createSync(recursive: true)
         ..writeAsStringSync('''
 [package]
@@ -256,14 +256,14 @@ path = "src/main.styio"
 
       await _writeExecutable(
         File(
-          '${tempRoot.path}${Platform.pathSeparator}.spio${Platform.pathSeparator}bin${Platform.pathSeparator}spio',
+          '${tempRoot.path}${Platform.pathSeparator}.pafio${Platform.pathSeparator}bin${Platform.pathSeparator}pafio',
         ),
         '''#!/usr/bin/env python3
 import json, sys
 
 if sys.argv[1:] == ['machine-info', '--json']:
     print(json.dumps({
-        'tool': 'spio',
+        'tool': 'pafio',
         'feature_flags': {'workflow_success_payloads': True},
         'supported_contract_versions': {'workflow_success_payloads': [1]},
     }))
@@ -299,7 +299,7 @@ raise SystemExit(64)
 
       final projectGraph = _projectGraph(
         workspaceRoot: tempRoot.path,
-        manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+        manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
         targets: <ProjectTargetDescriptor>[
           ProjectTargetDescriptor(
             id: 'demo/app:lib:demo',
@@ -320,7 +320,7 @@ raise SystemExit(64)
           _packageSnapshot(
             packageName: 'demo/app',
             rootPath: tempRoot.path,
-            manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+            manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
             targets: <ProjectTargetDescriptor>[
               ProjectTargetDescriptor(
                 id: 'demo/app:lib:demo',
@@ -367,7 +367,7 @@ raise SystemExit(64)
     },
   );
 
-  test('execution adapter surfaces structured spio failure payloads', () async {
+  test('execution adapter surfaces structured pafio failure payloads', () async {
     final tempRoot = await _createTempRoot(
       'vityo_execution_failure_payload_test_',
     );
@@ -378,7 +378,7 @@ raise SystemExit(64)
           ..createSync(recursive: true)
           ..writeAsStringSync('>_("demo")\n');
 
-    File('${tempRoot.path}${Platform.pathSeparator}spio.toml')
+    File('${tempRoot.path}${Platform.pathSeparator}pafio.toml')
       ..createSync(recursive: true)
       ..writeAsStringSync('''
 [package]
@@ -396,14 +396,14 @@ path = "src/main.styio"
 
     await _writeExecutable(
       File(
-        '${tempRoot.path}${Platform.pathSeparator}.spio${Platform.pathSeparator}bin${Platform.pathSeparator}spio',
+        '${tempRoot.path}${Platform.pathSeparator}.pafio${Platform.pathSeparator}bin${Platform.pathSeparator}pafio',
       ),
       '''#!/usr/bin/env python3
 import json, sys
 
 if sys.argv[1:] == ['machine-info', '--json']:
     print(json.dumps({
-        'tool': 'spio',
+        'tool': 'pafio',
         'feature_flags': {'workflow_success_payloads': True},
         'supported_contract_versions': {'workflow_success_payloads': [1]},
     }))
@@ -454,7 +454,7 @@ raise SystemExit(64)
 
     final projectGraph = _projectGraph(
       workspaceRoot: tempRoot.path,
-      manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+      manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
       targets: <ProjectTargetDescriptor>[
         ProjectTargetDescriptor(
           id: 'demo/app:bin:demo',
@@ -468,7 +468,7 @@ raise SystemExit(64)
         _packageSnapshot(
           packageName: 'demo/app',
           rootPath: tempRoot.path,
-          manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+          manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
           targets: <ProjectTargetDescriptor>[
             ProjectTargetDescriptor(
               id: 'demo/app:bin:demo',
@@ -752,7 +752,7 @@ raise SystemExit(65)
         return;
       }
 
-      File('${tempRoot.path}${Platform.pathSeparator}spio.toml')
+      File('${tempRoot.path}${Platform.pathSeparator}pafio.toml')
         ..createSync(recursive: true)
         ..writeAsStringSync('''
 [package]
@@ -770,14 +770,14 @@ path = "src/main.styio"
 
       await _writeExecutable(
         File(
-          '${tempRoot.path}${Platform.pathSeparator}.spio${Platform.pathSeparator}bin${Platform.pathSeparator}spio',
+          '${tempRoot.path}${Platform.pathSeparator}.pafio${Platform.pathSeparator}bin${Platform.pathSeparator}pafio',
         ),
         '''#!/usr/bin/env python3
 import json, sys
 
 if sys.argv[1:] == ['machine-info', '--json']:
     print(json.dumps({
-        'tool': 'spio',
+        'tool': 'pafio',
         'feature_flags': {'workflow_success_payloads': True},
         'supported_contract_versions': {'workflow_success_payloads': [1]},
     }))
@@ -789,7 +789,7 @@ raise SystemExit(66)
 
       final projectGraph = _projectGraph(
         workspaceRoot: tempRoot.path,
-        manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+        manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
         targets: <ProjectTargetDescriptor>[
           ProjectTargetDescriptor(
             id: 'demo/app:bin:demo',
@@ -803,7 +803,7 @@ raise SystemExit(66)
           _packageSnapshot(
             packageName: 'demo/app',
             rootPath: tempRoot.path,
-            manifestPath: '${tempRoot.path}${Platform.pathSeparator}spio.toml',
+            manifestPath: '${tempRoot.path}${Platform.pathSeparator}pafio.toml',
             targets: <ProjectTargetDescriptor>[
               ProjectTargetDescriptor(
                 id: 'demo/app:bin:demo',
@@ -1023,7 +1023,7 @@ raise SystemExit(64)
     );
     expect(iosSession.sessionId, 'ios-cloud-only');
 
-    final manifestPath = '${tempRoot.path}${Platform.pathSeparator}spio.toml';
+    final manifestPath = '${tempRoot.path}${Platform.pathSeparator}pafio.toml';
     File(manifestPath).writeAsStringSync('''
 [package]
 name = "demo/app"
@@ -1079,7 +1079,7 @@ path = "scratch/main.styio"
     );
     expect(blockedCompilePlan.sessionId, 'compile-plan-preview-only');
 
-    final missingSpioGraph = _projectGraph(
+    final missingPafioGraph = _projectGraph(
       workspaceRoot: tempRoot.path,
       manifestPath: manifestPath,
       targets: <ProjectTargetDescriptor>[target],
@@ -1093,13 +1093,13 @@ path = "scratch/main.styio"
       ],
       activeCompiler: _compilerSnapshot(fakeStyio.path),
     );
-    final missingSpioAdapter = await createExecutionAdapter(
+    final missingPafioAdapter = await createExecutionAdapter(
       platformTarget: PlatformTarget.macos,
-      projectGraph: missingSpioGraph,
+      projectGraph: missingPafioGraph,
     );
-    final missingSpio = await missingSpioAdapter.runActiveDocument(
+    final missingPafio = await missingPafioAdapter.runActiveDocument(
       platformTarget: PlatformTarget.macos,
-      projectGraph: missingSpioGraph,
+      projectGraph: missingPafioGraph,
       document: const DocumentState(
         documentId: 'scratch',
         text: '>_("demo")\n',
@@ -1107,8 +1107,8 @@ path = "scratch/main.styio"
       ),
       activeFilePath: sourceFile.path,
     );
-    expect(missingSpio.status, ExecutionSessionStatus.blocked);
-    expect(missingSpio.sessionId, 'missing-spio-binary');
+    expect(missingPafio.status, ExecutionSessionStatus.blocked);
+    expect(missingPafio.sessionId, 'missing-pafio-binary');
   });
 
   test('single-file execution writes relative documents to temporary inputs', () async {
@@ -1186,7 +1186,7 @@ raise SystemExit(64)
             )
             ..createSync(recursive: true)
             ..writeAsStringSync('pub fn render() {}\n');
-      final manifestPath = '${tempRoot.path}${Platform.pathSeparator}spio.toml';
+      final manifestPath = '${tempRoot.path}${Platform.pathSeparator}pafio.toml';
       File(manifestPath).writeAsStringSync('''
 [package]
 name = "demo/app"
@@ -1201,14 +1201,14 @@ path = "tests/render_test.styio"
 ''');
       await _writeExecutable(
         File(
-          '${tempRoot.path}${Platform.pathSeparator}.spio${Platform.pathSeparator}bin${Platform.pathSeparator}spio',
+          '${tempRoot.path}${Platform.pathSeparator}.pafio${Platform.pathSeparator}bin${Platform.pathSeparator}pafio',
         ),
         '''#!/usr/bin/env python3
 import json, os, sys
 
 if sys.argv[1:] == ['machine-info', '--json']:
     print(json.dumps({
-        'tool': 'spio',
+        'tool': 'pafio',
         'supported_contract_versions': {'workflow_success_payloads': [1]},
     }))
     raise SystemExit(0)
@@ -1575,13 +1575,13 @@ ProjectGraphSnapshot _projectGraph({
     workspaceRoot: workspaceRoot,
     workspaceMembers: const <String>[],
     manifestPath: manifestPath,
-    lockfilePath: '$workspaceRoot${Platform.pathSeparator}spio.lock',
+    lockfilePath: '$workspaceRoot${Platform.pathSeparator}pafio.lock',
     toolchainPinPath:
-        '$workspaceRoot${Platform.pathSeparator}spio-toolchain.toml',
+        '$workspaceRoot${Platform.pathSeparator}pafio-toolchain.toml',
     vendorRoot:
-        '$workspaceRoot${Platform.pathSeparator}.spio${Platform.pathSeparator}vendor',
+        '$workspaceRoot${Platform.pathSeparator}.pafio${Platform.pathSeparator}vendor',
     buildRoot:
-        '$workspaceRoot${Platform.pathSeparator}.spio${Platform.pathSeparator}build',
+        '$workspaceRoot${Platform.pathSeparator}.pafio${Platform.pathSeparator}build',
     packages: packages,
     dependencies: const <ProjectDependencySnapshot>[],
     targets: targets,

@@ -280,16 +280,15 @@ class StyioCliJsonlProtocol {
   List<String> analyzeArguments(StyioServiceDocument document) {
     final filePath = document.filePath;
     return <String>[
-      'check',
-      '--syntax',
-      '--json',
       '--parser-engine',
       parserEngine,
+      if (emitAstText) '--styio-ast',
+      '--error-format',
+      'jsonl',
       if (document.configPath != null) ...<String>[
         '--config',
         document.configPath!,
       ],
-      if (emitAstText) '--styio-ast',
       if (filePath != null) ...<String>['--file', filePath],
     ];
   }
@@ -338,7 +337,6 @@ class StyioCliJsonlProtocol {
       effectiveProtocolVersion =
           _stringValue(decoded['protocolVersion']) ??
           _stringValue(decoded['protocol_version']) ??
-          _stringValue(decoded['contract']) ??
           effectiveProtocolVersion;
       effectiveParserEngine =
           _stringValue(decoded['parserEngine']) ??
@@ -1447,16 +1445,6 @@ class StyioCliJsonlProtocol {
   }
 
   _StyioJsonRecordKind _kindFromJson(Map<String, Object?> json) {
-    final contract = _normalizedStyioServiceRecordKind(
-      _stringValue(json['contract']),
-    );
-    if (contract == 'syntaxcheck') {
-      return _StyioJsonRecordKind.facts;
-    }
-    if (json.containsKey('diagnostics') &&
-        (json.containsKey('status') || json.containsKey('ok'))) {
-      return _StyioJsonRecordKind.facts;
-    }
     final kind =
         _stringValue(json['kind']) ??
         _stringValue(json['type']) ??

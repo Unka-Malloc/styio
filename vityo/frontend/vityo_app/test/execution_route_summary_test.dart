@@ -140,9 +140,9 @@ void main() {
         kind: ProjectKind.package,
         workspaceRoot: '/workspace/demo',
         workspaceMembers: <String>[],
-        manifestPath: '/workspace/demo/spio.toml',
-        lockfilePath: '/workspace/demo/spio.lock',
-        toolchainPinPath: '/workspace/demo/spio-toolchain.toml',
+        manifestPath: '/workspace/demo/pafio.toml',
+        lockfilePath: '/workspace/demo/pafio.lock',
+        toolchainPinPath: '/workspace/demo/pafio-toolchain.toml',
         dependencies: <ProjectDependencySnapshot>[],
         packages: <ProjectPackageSnapshot>[],
         targets: <ProjectTargetDescriptor>[],
@@ -208,19 +208,22 @@ void main() {
     expect(gate.blockedReason, contains('build/run/test stays blocked'));
   });
 
-  test('route gate blocks compile-plan project when adapter is unavailable', () {
-    final gate = evaluateExecutionRouteGate(
-      platformTarget: PlatformTarget.macos,
-      projectGraph: _packageGraphWithCompilePlan(),
-      adapterCapabilities: _capabilities(
-        cliExecution: AdapterCapabilityLevel.unavailable,
-      ),
-    );
+  test(
+    'route gate blocks compile-plan project when adapter is unavailable',
+    () {
+      final gate = evaluateExecutionRouteGate(
+        platformTarget: PlatformTarget.macos,
+        projectGraph: _packageGraphWithCompilePlan(),
+        adapterCapabilities: _capabilities(
+          cliExecution: AdapterCapabilityLevel.unavailable,
+        ),
+      );
 
-    expect(gate.allowed, isFalse);
-    expect(gate.summary.title, 'Project route blocked by adapter');
-    expect(gate.blockedReason, contains('no CLI execution adapter'));
-  });
+      expect(gate.allowed, isFalse);
+      expect(gate.summary.title, 'Project route blocked by adapter');
+      expect(gate.blockedReason, contains('no CLI execution adapter'));
+    },
+  );
 
   test('project route is live when compile-plan consumer is advertised', () {
     final summary = summarizeExecutionRoute(
@@ -231,9 +234,9 @@ void main() {
         kind: ProjectKind.package,
         workspaceRoot: '/workspace/demo-live',
         workspaceMembers: <String>[],
-        manifestPath: '/workspace/demo-live/spio.toml',
-        lockfilePath: '/workspace/demo-live/spio.lock',
-        toolchainPinPath: '/workspace/demo-live/spio-toolchain.toml',
+        manifestPath: '/workspace/demo-live/pafio.toml',
+        lockfilePath: '/workspace/demo-live/pafio.lock',
+        toolchainPinPath: '/workspace/demo-live/pafio-toolchain.toml',
         dependencies: <ProjectDependencySnapshot>[],
         packages: <ProjectPackageSnapshot>[],
         targets: <ProjectTargetDescriptor>[],
@@ -287,7 +290,7 @@ void main() {
       ],
     );
 
-    expect(summary.title, 'Project route live through spio');
+    expect(summary.title, 'Project route live through pafio');
     expect(summary.previewOnly, isFalse);
   });
 
@@ -301,9 +304,9 @@ void main() {
         kind: ProjectKind.package,
         workspaceRoot: '/workspace/demo-jit',
         workspaceMembers: <String>[],
-        manifestPath: '/workspace/demo-jit/spio.toml',
-        lockfilePath: '/workspace/demo-jit/spio.lock',
-        toolchainPinPath: '/workspace/demo-jit/spio-toolchain.toml',
+        manifestPath: '/workspace/demo-jit/pafio.toml',
+        lockfilePath: '/workspace/demo-jit/pafio.lock',
+        toolchainPinPath: '/workspace/demo-jit/pafio-toolchain.toml',
         dependencies: <ProjectDependencySnapshot>[],
         packages: <ProjectPackageSnapshot>[],
         targets: <ProjectTargetDescriptor>[],
@@ -372,7 +375,7 @@ void main() {
         kind: ProjectKind.hosted,
         workspaceRoot: '/workspace/hosted-demo',
         workspaceMembers: <String>[],
-        manifestPath: '/workspace/hosted-demo/spio.toml',
+        manifestPath: '/workspace/hosted-demo/pafio.toml',
         dependencies: <ProjectDependencySnapshot>[],
         packages: <ProjectPackageSnapshot>[],
         targets: <ProjectTargetDescriptor>[],
@@ -471,10 +474,11 @@ void main() {
       ),
     );
 
-    expect(summary.title, 'Project route live with cloud fallback');
+    expect(summary.title, 'Android local-first execution');
     expect(summary.primaryAdapterKind, AdapterKind.cli);
     expect(summary.previewOnly, isFalse);
-    expect(summary.body, contains('Android keeps local-first intent'));
+    expect(summary.body, contains('local CLI execution is active'));
+    expect(summary.body, contains('Cloud is available'));
     expect(
       summary.jitRoute.title,
       'Android JIT route pending local compiler support',
@@ -506,7 +510,7 @@ void main() {
         kind: ProjectKind.hosted,
         workspaceRoot: '/workspace/hosted-selection',
         workspaceMembers: const <String>[],
-        manifestPath: '/workspace/hosted-selection/spio.toml',
+        manifestPath: '/workspace/hosted-selection/pafio.toml',
         dependencies: const <ProjectDependencySnapshot>[],
         packages: const <ProjectPackageSnapshot>[],
         targets: const <ProjectTargetDescriptor>[],
@@ -565,7 +569,7 @@ ProjectGraphSnapshot _packageGraph({bool jitReady = false}) {
     kind: ProjectKind.package,
     workspaceRoot: '/workspace/demo-route',
     workspaceMembers: const <String>[],
-    manifestPath: '/workspace/demo-route/spio.toml',
+    manifestPath: '/workspace/demo-route/pafio.toml',
     dependencies: const <ProjectDependencySnapshot>[],
     packages: const <ProjectPackageSnapshot>[],
     targets: const <ProjectTargetDescriptor>[],
@@ -600,7 +604,7 @@ ProjectGraphSnapshot _packageGraphWithCompilePlan() {
     kind: ProjectKind.package,
     workspaceRoot: '/workspace/demo-compile-plan',
     workspaceMembers: <String>[],
-    manifestPath: '/workspace/demo-compile-plan/spio.toml',
+    manifestPath: '/workspace/demo-compile-plan/pafio.toml',
     dependencies: <ProjectDependencySnapshot>[],
     packages: <ProjectPackageSnapshot>[],
     targets: <ProjectTargetDescriptor>[],

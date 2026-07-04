@@ -73,7 +73,7 @@ TEAM_RULES: tuple[TeamRule, ...] = (
             "configs/",
             "scripts/gen-styio-nano-profile.py",
             "scripts/source-build-minimal.sh",
-            "docs/external/for-spio/",
+            "docs/external/for-pafio/",
         ),
     ),
     TeamRule(
@@ -194,11 +194,7 @@ def run_git(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 def normalize_path(path: str) -> Path:
     path = path.strip().strip('"')
-    normalized = Path(path)
-    parts = normalized.parts
-    if parts and parts[0] == ROOT.name:
-        return Path(*parts[1:]) if len(parts) > 1 else Path(".")
-    return normalized
+    return Path(path)
 
 
 def changed_from_worktree() -> List[Path]:

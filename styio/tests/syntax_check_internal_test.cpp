@@ -211,36 +211,3 @@ TEST(StyioSyntaxCheckInternal, RunCliCoversLexAndParseDiagnostics) {
   EXPECT_NE(output.find("\"status\":\"syntax_error\""), std::string::npos) << output;
   EXPECT_NE(output.find("\"phase\":\"parse\""), std::string::npos) << output;
 }
-
-TEST(StyioSyntaxCheckInternal, RunCliAcceptsProjectConfigForIdeHandoff) {
-  TempDir temp("styio-syntax-config");
-
-  const fs::path source = temp.path() / "configured.styio";
-  const fs::path config = temp.path() / "styio.toml";
-  WriteText(source, "#main := () => {}\n");
-  WriteText(config, "[symbols]\n");
-
-  std::vector<std::string> args = {
-    "styio",
-    "check",
-    "--syntax",
-    "--json",
-    "--config",
-    config.string(),
-    "--file",
-    source.string(),
-  };
-  std::vector<char*> argv;
-  argv.reserve(args.size());
-  for (auto& arg : args) {
-    argv.push_back(arg.data());
-  }
-
-  testing::internal::CaptureStdout();
-  const int exit_code =
-    styio::services::run_syntax_check_cli(static_cast<int>(argv.size()), argv.data());
-  const std::string output = testing::internal::GetCapturedStdout();
-  EXPECT_EQ(exit_code, 0) << output;
-  EXPECT_NE(output.find("\"contract\":\"syntax-check\""), std::string::npos) << output;
-  EXPECT_NE(output.find("\"status\":\"ok\""), std::string::npos) << output;
-}

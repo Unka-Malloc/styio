@@ -7,7 +7,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <cmath>
-#include <deque>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -22,6 +21,7 @@
 #include "ExternLib.hpp"
 #include "StyioServices/StyioConfig/NanoProfile.hpp"
 #include "StyioRuntime/HandleTable.hpp"
+#include "StyioRuntime/ReadyQueue.hpp"
 
 namespace {
 
@@ -352,8 +352,8 @@ struct StyioTask
 
 void
 wait_until_task_ready(StyioTask* task) {
-  while (!task->ready.load(std::memory_order_acquire)) {
-    task->ready.wait(false, std::memory_order_acquire);
+  while (!(*task).ready.load(std::memory_order_acquire)) {
+    (*task).ready.wait(false, std::memory_order_acquire);
   }
 }
 
@@ -367,13 +367,10 @@ public:
 
   void enqueue(StyioTask* task) {
     ensure_started();
-    {
-      std::lock_guard<std::mutex> lock(mu_);
-      queue_.push_back(task);
-      task_profile_update_max(
-        g_task_scheduler_profile_counters.max_queue_depth,
-        static_cast<int64_t>(queue_.size()));
-    }
+    queue_->push(static_cast<void*>(task));
+    task_profile_update_max(
+      g_task_scheduler_profile_counters.max_queue_depth,
+      static_cast<int64_t>(queue_->approximate_size()));
     task_profile_inc(g_task_scheduler_profile_counters.enqueued_tasks);
     cv_.notify_one();
   }
@@ -389,10 +386,14 @@ public:
     return workers_.size();
   }
 
+  styio::runtime::ReadyQueueKind ready_queue_kind() const {
+    return queue_->kind();
+  }
+
 private:
   std::mutex mu_;
   std::condition_variable cv_;
-  std::deque<StyioTask*> queue_;
+  std::unique_ptr<styio::runtime::IReadyQueue> queue_{styio::runtime::make_ready_queue()};
   std::vector<std::thread> workers_;
   std::atomic<bool> started_{false};
   bool stopping_ = false;
@@ -450,21 +451,22 @@ private:
       local_batch.clear();
       {
         std::unique_lock<std::mutex> lock(mu_);
-        cv_.wait(lock, [this]() { return stopping_ || !queue_.empty(); });
-        if (stopping_ && queue_.empty()) {
+        cv_.wait(lock, [this]() { return stopping_ || !queue_->empty(); });
+        if (stopping_ && queue_->empty()) {
           return;
         }
-        const std::size_t batch_limit = queue_.size() > workers_.size() ? 64 : 1;
-        local_batch.push_back(queue_.front());
-        queue_.pop_front();
-        while (!queue_.empty() && local_batch.size() < batch_limit) {
-          local_batch.push_back(queue_.front());
-          queue_.pop_front();
+        const std::size_t batch_limit = queue_->approximate_size() > workers_.size() ? 64 : 1;
+        while (local_batch.size() < batch_limit) {
+          auto* task = static_cast<StyioTask*>(queue_->try_pop());
+          if (task == nullptr) {
+            break;
+          }
+          local_batch.push_back(task);
         }
       }
       for (StyioTask* task : local_batch) {
         if (task != nullptr) {
-          task->run();
+          (*task).run();
         }
       }
     }
@@ -650,7 +652,7 @@ void
 close_task(void* raw) {
   auto* task = static_cast<StyioTask*>(raw);
   if (task != nullptr) {
-    if (!task->ready.load(std::memory_order_acquire)) {
+    if (!(*task).ready.load(std::memory_order_acquire)) {
       wait_until_task_ready(task);
     }
     delete task;
@@ -680,7 +682,7 @@ as_task_handle(int64_t h, StyioTaskValueKind expected_kind) {
     set_runtime_error_once(kRuntimeSubcodeInvalidTaskHandle, "invalid task handle");
     return nullptr;
   }
-  if (task->kind != expected_kind) {
+  if ((*task).kind != expected_kind) {
     task_profile_inc(g_task_scheduler_profile_counters.invalid_pulls);
     set_runtime_error_once(kRuntimeSubcodeInvalidTaskHandle, "task result kind mismatch");
     return nullptr;
@@ -694,21 +696,21 @@ as_task_for_pull(int64_t h, StyioTaskValueKind expected_kind) {
   if (task == nullptr) {
     return nullptr;
   }
-  if (task->ready.load(std::memory_order_acquire)) {
+  if ((*task).ready.load(std::memory_order_acquire)) {
     task_profile_inc(g_task_scheduler_profile_counters.fast_ready_pulls);
   }
   else {
     task_profile_inc(g_task_scheduler_profile_counters.blocking_pulls);
     wait_until_task_ready(task);
   }
-  if (task->failed) {
+  if ((*task).failed) {
     task_profile_inc(g_task_scheduler_profile_counters.failed_pulls);
     set_runtime_error_once(
-      task->error_subcode.empty() ? kRuntimeSubcodeInvalidTaskHandle : task->error_subcode.c_str(),
-      task->error_message.empty() ? "task failed" : task->error_message);
+      (*task).error_subcode.empty() ? kRuntimeSubcodeInvalidTaskHandle : (*task).error_subcode.c_str(),
+      (*task).error_message.empty() ? "task failed" : (*task).error_message);
     return nullptr;
   }
-  if (task->consumed.exchange(true, std::memory_order_acq_rel)) {
+  if ((*task).consumed.exchange(true, std::memory_order_acq_rel)) {
     set_runtime_error_once(kRuntimeSubcodeTaskConsumed, "task result has already been pulled");
     return nullptr;
   }
@@ -2233,8 +2235,8 @@ styio_stdin_read_line() {
 extern "C" DLLEXPORT int64_t
 styio_task_i64_ready(int64_t value) {
   auto* task = new StyioTask(StyioTaskValueKind::I64);
-  task->i64 = value;
-  task->ready.store(true, std::memory_order_release);
+  (*task).i64 = value;
+  (*task).ready.store(true, std::memory_order_release);
   task_profile_inc(g_task_scheduler_profile_counters.ready_tasks);
   return stash_task(task);
 }
@@ -2242,8 +2244,8 @@ styio_task_i64_ready(int64_t value) {
 extern "C" DLLEXPORT int64_t
 styio_task_f64_ready(double value) {
   auto* task = new StyioTask(StyioTaskValueKind::F64);
-  task->f64 = value;
-  task->ready.store(true, std::memory_order_release);
+  (*task).f64 = value;
+  (*task).ready.store(true, std::memory_order_release);
   task_profile_inc(g_task_scheduler_profile_counters.ready_tasks);
   return stash_task(task);
 }
@@ -2252,9 +2254,9 @@ extern "C" DLLEXPORT int64_t
 styio_task_cstr_ready(const char* value) {
   auto* task = new StyioTask(StyioTaskValueKind::String);
   if (value != nullptr) {
-    task->str = value;
+    (*task).str = value;
   }
-  task->ready.store(true, std::memory_order_release);
+  (*task).ready.store(true, std::memory_order_release);
   task_profile_inc(g_task_scheduler_profile_counters.ready_tasks);
   return stash_task(task);
 }
@@ -2262,8 +2264,8 @@ styio_task_cstr_ready(const char* value) {
 extern "C" DLLEXPORT int64_t
 styio_task_i64_spawn(int64_t (*fn)(void*), void* ctx) {
   auto* task = new StyioTask(StyioTaskValueKind::I64);
-  task->i64_fn = fn;
-  task->ctx = ctx;
+  (*task).i64_fn = fn;
+  (*task).ctx = ctx;
   const int64_t handle = stash_task(task);
   if (handle != 0) {
     task_profile_inc(g_task_scheduler_profile_counters.spawned_tasks);
@@ -2275,8 +2277,8 @@ styio_task_i64_spawn(int64_t (*fn)(void*), void* ctx) {
 extern "C" DLLEXPORT int64_t
 styio_task_f64_spawn(double (*fn)(void*), void* ctx) {
   auto* task = new StyioTask(StyioTaskValueKind::F64);
-  task->f64_fn = fn;
-  task->ctx = ctx;
+  (*task).f64_fn = fn;
+  (*task).ctx = ctx;
   const int64_t handle = stash_task(task);
   if (handle != 0) {
     task_profile_inc(g_task_scheduler_profile_counters.spawned_tasks);
@@ -2288,8 +2290,8 @@ styio_task_f64_spawn(double (*fn)(void*), void* ctx) {
 extern "C" DLLEXPORT int64_t
 styio_task_cstr_spawn(const char* (*fn)(void*), void* ctx) {
   auto* task = new StyioTask(StyioTaskValueKind::String);
-  task->cstr_fn = fn;
-  task->ctx = ctx;
+  (*task).cstr_fn = fn;
+  (*task).ctx = ctx;
   const int64_t handle = stash_task(task);
   if (handle != 0) {
     task_profile_inc(g_task_scheduler_profile_counters.spawned_tasks);
@@ -2304,7 +2306,7 @@ styio_task_i64_pull(int64_t h) {
   if (task == nullptr) {
     return 0;
   }
-  return task->i64;
+  return (*task).i64;
 }
 
 extern "C" DLLEXPORT double
@@ -2313,7 +2315,7 @@ styio_task_f64_pull(int64_t h) {
   if (task == nullptr) {
     return 0.0;
   }
-  return task->f64;
+  return (*task).f64;
 }
 
 extern "C" DLLEXPORT const char*
@@ -2322,7 +2324,7 @@ styio_task_cstr_pull(int64_t h) {
   if (task == nullptr) {
     return "";
   }
-  return task->str.c_str();
+  return (*task).str.c_str();
 }
 
 extern "C" DLLEXPORT void
@@ -2357,6 +2359,7 @@ styio_task_scheduler_profile_snapshot(StyioTaskSchedulerProfileSnapshot* out) {
   }
   out->enabled = task_scheduler_profile_enabled() ? 1 : 0;
   out->worker_count = static_cast<int64_t>(StyioTaskScheduler::instance().current_worker_count());
+  out->ready_queue_kind = static_cast<int64_t>(StyioTaskScheduler::instance().ready_queue_kind());
   out->active_tasks = g_active_task_handles;
   out->ready_tasks = g_task_scheduler_profile_counters.ready_tasks.load(std::memory_order_relaxed);
   out->spawned_tasks = g_task_scheduler_profile_counters.spawned_tasks.load(std::memory_order_relaxed);

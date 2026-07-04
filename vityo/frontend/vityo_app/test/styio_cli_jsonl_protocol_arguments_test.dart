@@ -14,18 +14,14 @@ void main() {
     final arguments = protocol.analyzeArguments(document);
 
     expect(arguments, isNot(contains('--styio-ast')));
-    expect(
-      arguments,
-      containsAllInOrder(<String>[
-        'check',
-        '--syntax',
-        '--json',
-        '--parser-engine',
-        'nightly',
-        '--file',
-        '/workspace/main.styio',
-      ]),
-    );
+    expect(arguments, containsAllInOrder(<String>[
+      '--parser-engine',
+      'nightly',
+      '--error-format',
+      'jsonl',
+      '--file',
+      '/workspace/main.styio',
+    ]));
   });
 
   test('Styio CLI JSONL protocol can request AST text explicitly', () {
@@ -40,17 +36,13 @@ void main() {
     final arguments = protocol.analyzeArguments(document);
 
     expect(arguments, contains('--styio-ast'));
-    expect(
-      arguments,
-      containsAllInOrder(<String>[
-        'check',
-        '--syntax',
-        '--json',
-        '--parser-engine',
-        'nightly',
-        '--styio-ast',
-      ]),
-    );
+    expect(arguments, containsAllInOrder(<String>[
+      '--parser-engine',
+      'nightly',
+      '--styio-ast',
+      '--error-format',
+      'jsonl',
+    ]));
   });
 
   test('Styio CLI JSONL protocol treats plain AST stdout as clean syntax', () {

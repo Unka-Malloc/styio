@@ -71,7 +71,7 @@ Required GitHub merge gates are maintained through GitHub Rulesets, not legacy c
 Gate audits must inspect effective branch rules, for example:
 
 ```bash
-gh api repos/Unka-Malloc/styio-nightly/rules/branches/ai-dev
+gh api repos/styio-org/styio-nightly/rules/branches/ai-dev
 ```
 
 Do not use `branches/ai-dev/protection/required_status_checks` as the authority for this repository. That legacy classic endpoint can return 404 even when the Ruleset gate is active.

@@ -39,7 +39,7 @@ resource topology gives Styio an active source direction for resource declaratio
   `@stdout.pressure` and topology resource bindings such as
   `channel.pressure` fail closed with
   `STYIO_SEMA_RESOURCE_PRESSURE_OBSERVER_UNSUPPORTED`. This
-  preserves task-await binding for `?| task -> value: T`; failed task pulls now
+  preserves task_await binding for `?| task -> value: T`; failed task pulls now
   run the await fallback after clearing the materialized task error, while
   failed task pulls without fallback stop at the await settlement site. Non-task
   await sources and bare continuation freeze fallbacks remain fail-closed.
@@ -350,7 +350,7 @@ The important decision is the resource rule visible to users and tests, not an i
 Accepted block-entry decision:
 
 - Every language form that enters a block creates a resource snapshot context at the block-entry operator.
-- Covered block-entry operators include `>>`, `=>`, `?=`, the active task-launch operator `||>`, and the reserved `|>` family if it later becomes a block-entry surface.
+- Covered block-entry operators include `>>`, `=>`, `?=`, the active task_launch operator `||>`, and the reserved `|>` family if it later becomes a block-entry surface.
 - This rule covers resource state and resource effects. Ordinary lexical value scoping keeps its existing language rules.
 - The block operates on the snapshot. It does not share mutable access to the original resource context while the block is running.
 - The parameterized form `resource >> #(x) => { ... }` follows the same rule; the closure parameter is drawn from the snapshot stream.

@@ -5,10 +5,10 @@ endif()
 if(NOT DEFINED FETCHCONTENT_SOURCE_DIR_GOOGLETEST OR
    NOT EXISTS "${FETCHCONTENT_SOURCE_DIR_GOOGLETEST}/CMakeLists.txt")
   set(_STYIO_GOOGLETEST_SOURCE_CANDIDATES
-    "${STYIO_BINARY_DIR}/_deps/googletest-src"
-    "${STYIO_SOURCE_DIR}/build/default/_deps/googletest-src"
-    "${STYIO_SOURCE_DIR}/build/ide-perf/_deps/googletest-src"
-    "${STYIO_SOURCE_DIR}/build/fuzz/_deps/googletest-src"
+    "${CMAKE_BINARY_DIR}/_deps/googletest-src"
+    "${CMAKE_SOURCE_DIR}/build/default/_deps/googletest-src"
+    "${CMAKE_SOURCE_DIR}/build/ide-perf/_deps/googletest-src"
+    "${CMAKE_SOURCE_DIR}/build/fuzz/_deps/googletest-src"
   )
   foreach(_candidate IN LISTS _STYIO_GOOGLETEST_SOURCE_CANDIDATES)
     if(EXISTS "${_candidate}/CMakeLists.txt")

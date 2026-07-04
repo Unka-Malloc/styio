@@ -1,4 +1,4 @@
-# styio_core_bench â€?in-repo C++ benchmark binary.
+# styio_core_bench - in-repo C++ benchmark binary.
 # Uses only std::chrono and the compiler itself; no third-party deps.
 
 add_executable(styio_core_bench
@@ -8,8 +8,8 @@ add_executable(styio_core_bench
 target_link_libraries(styio_core_bench PRIVATE styio_core)
 
 target_include_directories(styio_core_bench PRIVATE
-  "${STYIO_SOURCE_DIR}/src"
-  "${STYIO_BINARY_DIR}/generated"
+  "${CMAKE_SOURCE_DIR}/src"
+  "${CMAKE_BINARY_DIR}/generated"
 )
 
 styio_apply_llvm_compile_settings(styio_core_bench)
@@ -33,7 +33,7 @@ set_tests_properties(styio_core_benchmark_internal PROPERTIES
 add_test(
   NAME styio_core_benchmark_json_output
   COMMAND $<TARGET_FILE:styio_core_bench>
-          --output "${STYIO_BINARY_DIR}/benchmark/core/core-benchmark-result.json"
+          --output "${CMAKE_BINARY_DIR}/benchmark/core/core-benchmark-result.json"
 )
 set_tests_properties(styio_core_benchmark_json_output PROPERTIES
   LABELS "benchmark;performance;core_internal"

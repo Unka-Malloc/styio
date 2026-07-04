@@ -1,6 +1,6 @@
 # Vityo Delivered Design Baseline
 
-**Purpose:** Consolidate completed Vityo implementation-plan outcomes into stable design documentation after retiring `docs/plans/` as an active documentation area.
+**Purpose:** Consolidate completed Vityo implementation-plan outcomes into stable design documentation after retiring `docs/plan/` as an active documentation area.
 
 **Last updated:** 2026-05-16
 
@@ -232,9 +232,9 @@ Toolchain backend ownership is split:
 | `toolchain/` | Vityo toolchain backend profile assets, normalization notes, handoff examples, and local backend surface. |
 | `docs/contracts/` | Vityo product adapter contracts. |
 | `styio-nightly` | Compiler binary truth, managed toolchain install/use/pin semantics, machine-info, service capability, and capability SSOT. |
-| `styio-spio` | Package/workflow/backend-service truth, hosted control plane, project graph, toolchain state, dependency, and deployment backend services. |
+| `styio-pafio` | Package/workflow/backend-service truth, hosted control plane, project graph, toolchain state, dependency, and deployment backend services. |
 
-Frontend should consume product contracts and normalized machine payloads, not raw profile files, compiler symlinks, cache layout, or `.spio` internals on the main runtime path.
+Frontend should consume product contracts and normalized machine payloads, not raw profile files, compiler symlinks, cache layout, or `.pafio` internals on the main runtime path.
 
 `StyioService` is not an OS-level foundation. It is launched from the selected Styio toolchain through Vityo's Toolchain Manager, Process Manager, and Styio Service Connector. OS APIs provide process, file, permission, and network foundations only.
 
@@ -244,12 +244,12 @@ The following local plan documents were retired after their completed content wa
 
 | Retired document | Replacement |
 |---|---|
-| `docs/plans/Vityo-Implementation-Plan.md` | This delivered design baseline plus the gap register. |
-| `docs/plans/Vityo-Independent-Work-Breakdown.md` | This delivered design baseline plus the gap register. |
-| `docs/plans/StyioService-VityoIDE-Language-Boundary-Plan.md` | Service Layer design docs and the gap register. |
-| `docs/plans/Vityo-Runtime-Dependencies.md` | Runtime design docs, vertical-flow architecture views, and this baseline. |
-| `docs/plans/Vityo-Runtime-Layer-Stack.md` | Runtime design docs, vertical-flow architecture views, and this baseline. |
-| `docs/plans/Vityo-Vertical-Lines.md` | Runtime design docs, vertical-flow architecture views, and this baseline. |
-| `docs/plans/Vityo-Toolchain-Backend-Handoff-Plan.md` | Toolchain backend baseline in this document and the gap register. |
-| `docs/plans/Styio-Ecosystem-Delivery-Master-Plan.md` | Upstream canonical plan remains outside this repo; this repo keeps only delivered baseline and gaps. |
-| `docs/plans/Styio-Ecosystem-File-Governance-Alignment-Plan.md` | Documentation policy and docs/delivery runbook now own repo-local governance boundaries. |
+| `docs/plan/Vityo-Implementation-Plan.md` | This delivered design baseline plus the gap register. |
+| `docs/plan/Vityo-Independent-Work-Breakdown.md` | This delivered design baseline plus the gap register. |
+| `docs/plan/StyioService-VityoIDE-Language-Boundary-Plan.md` | Service Layer design docs and the gap register. |
+| `docs/plan/Vityo-Runtime-Dependencies.md` | Runtime design docs, vertical-flow architecture views, and this baseline. |
+| `docs/plan/Vityo-Runtime-Layer-Stack.md` | Runtime design docs, vertical-flow architecture views, and this baseline. |
+| `docs/plan/Vityo-Vertical-Lines.md` | Runtime design docs, vertical-flow architecture views, and this baseline. |
+| `docs/plan/Vityo-Toolchain-Backend-Handoff-Plan.md` | Toolchain backend baseline in this document and the gap register. |
+| `docs/plan/Styio-Ecosystem-Delivery-Master-Plan.md` | Upstream canonical plan remains outside this repo; this repo keeps only delivered baseline and gaps. |
+| `docs/plan/Styio-Ecosystem-File-Governance-Alignment-Plan.md` | Documentation policy and docs/delivery runbook now own repo-local governance boundaries. |

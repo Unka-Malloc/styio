@@ -11,13 +11,13 @@ option(STYIO_REQUIRE_EXTERNAL_BENCHMARK
        OFF)
 
 set(STYIO_CORE_BENCHMARK_RESULT
-    "${STYIO_BINARY_DIR}/benchmark/core/core-benchmark-smoke.json")
+    "${CMAKE_BINARY_DIR}/benchmark/core/core-benchmark-smoke.json")
 add_test(
   NAME styio_core_benchmark_smoke
   COMMAND "${Python3_EXECUTABLE}"
-          "${STYIO_SOURCE_DIR}/benchmark/core/run-core.py"
-          --repo-root "${STYIO_SOURCE_DIR}"
-          --manifest "${STYIO_SOURCE_DIR}/benchmark/core/manifest.json"
+          "${CMAKE_SOURCE_DIR}/benchmark/core/run-core.py"
+          --repo-root "${CMAKE_SOURCE_DIR}"
+          --manifest "${CMAKE_SOURCE_DIR}/benchmark/core/manifest.json"
           --styio "$<TARGET_FILE:styio>"
           --iterations 1
           --output "${STYIO_CORE_BENCHMARK_RESULT}"
@@ -35,8 +35,8 @@ function(styio_resolve_benchmark_root out_var)
     list(APPEND candidates "$ENV{STYIO_BENCHMARK_ROOT}")
   endif()
   list(APPEND candidates
-    "${STYIO_SOURCE_DIR}/../styio-benchmark"
-    "${STYIO_SOURCE_DIR}/../../eBioRing/styio-benchmark"
+    "${CMAKE_SOURCE_DIR}/../styio-benchmark"
+    "${CMAKE_SOURCE_DIR}/../../eBioRing/styio-benchmark"
     "$ENV{HOME}/DevSpace/eBioRing/styio-benchmark"
     "$ENV{HOME}/eBioRing/styio-benchmark"
   )
@@ -45,7 +45,7 @@ function(styio_resolve_benchmark_root out_var)
     if(candidate STREQUAL "")
       continue()
     endif()
-    get_filename_component(candidate_abs "${candidate}" ABSOLUTE BASE_DIR "${STYIO_SOURCE_DIR}")
+    get_filename_component(candidate_abs "${candidate}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
     if(EXISTS "${candidate_abs}/styio-probes/styio_soak_test.cpp"
        AND EXISTS "${candidate_abs}/styio-probes/styio_task_scheduler_perf_test.cpp")
       set(${out_var} "${candidate_abs}" PARENT_SCOPE)
@@ -84,7 +84,7 @@ if(STYIO_BENCHMARK_ROOT_RESOLVED)
   )
   add_dependencies(styio_soak_test styio)
   gtest_discover_tests(styio_soak_test
-    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     PROPERTIES LABELS "benchmark\\;soak\\;soak_smoke\\;single_thread"
   )
 
@@ -94,7 +94,7 @@ if(STYIO_BENCHMARK_ROOT_RESOLVED)
   target_link_libraries(styio_task_scheduler_perf_test PRIVATE styio_core GTest::gtest_main)
   styio_apply_llvm_compile_settings(styio_task_scheduler_perf_test)
   gtest_discover_tests(styio_task_scheduler_perf_test
-    WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     PROPERTIES LABELS "benchmark\\;task_runtime\\;performance"
   )
 

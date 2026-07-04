@@ -17,11 +17,8 @@ include(FetchContent)
 project(styio VERSION 0.0.1)
 include(GNUInstallDirs)
 
-set(STYIO_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-set(STYIO_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-
 list(APPEND CMAKE_MODULE_PATH
-  "${STYIO_SOURCE_DIR}/cmake"
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake"
 )
 
 option(STYIO_USE_ICU "Enable ICU-backed Unicode handling for StyioUnicode and CLI option text" OFF)
@@ -41,7 +38,7 @@ set(STYIO_NATIVE_TOOLCHAIN_BUNDLE_ROOT "" CACHE PATH
     "Optional clang+LLVM root copied into installed styio packages; empty means auto-detect from LLVM_TOOLS_BINARY_DIR")
 set(STYIO_NATIVE_TOOLCHAIN_RELATIVE_DIR "native-toolchain" CACHE STRING
     "Relative clang+LLVM bundle directory searched next to the styio executable")
-set(STYIO_NANO_PROFILE "${STYIO_SOURCE_DIR}/configs/styio-nano-default.toml" CACHE FILEPATH
+set(STYIO_NANO_PROFILE "${CMAKE_SOURCE_DIR}/configs/styio-nano-default.toml" CACHE FILEPATH
     "Path to the styio-nano profile TOML used to configure the styio-nano target")
 
 function(styio_cxx_string_define_path out_var value)
@@ -67,8 +64,8 @@ set(STYIO_NATIVE_TOOLCHAIN_MODE "${STYIO_NATIVE_TOOLCHAIN_MODE_NORMALIZED}" CACH
     "Native @extern compiler resolution: auto, bundled, or system" FORCE)
 
 configure_file(
-  "${STYIO_SOURCE_DIR}/src/StyioNative/NativeToolchainConfig.hpp.in"
-  "${STYIO_BINARY_DIR}/generated/StyioNative/NativeToolchainConfig.hpp"
+  "${CMAKE_SOURCE_DIR}/src/StyioNative/NativeToolchainConfig.hpp.in"
+  "${CMAKE_BINARY_DIR}/generated/StyioNative/NativeToolchainConfig.hpp"
   @ONLY
 )
 
@@ -77,8 +74,8 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-message(STATUS "[Styio] Source: " ${STYIO_SOURCE_DIR})
-message(STATUS "[Styio] Binary: " ${STYIO_BINARY_DIR})
+message(STATUS "[Styio] Source: " ${PROJECT_SOURCE_DIR})
+message(STATUS "[Styio] Binary: " ${PROJECT_BINARY_DIR})
 message(STATUS "[Styio] Archive: " ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY})
 message(STATUS "[Styio] Library: " ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 message(STATUS "[Styio] Runtime: " ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
@@ -89,7 +86,7 @@ include(StyioTreeSitter)
 include(StyioNanoProfile)
 
 styio_cxx_string_define_path(STYIO_DEFINE_LLVM_DIR "${LLVM_DIR}")
-styio_cxx_string_define_path(STYIO_DEFINE_SOURCE_DIR "${STYIO_SOURCE_DIR}")
+styio_cxx_string_define_path(STYIO_DEFINE_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
 styio_cxx_string_define_path(STYIO_DEFINE_CMAKE_C_COMPILER "${CMAKE_C_COMPILER}")
 styio_cxx_string_define_path(STYIO_DEFINE_CMAKE_CXX_COMPILER "${CMAKE_CXX_COMPILER}")
 styio_cxx_string_define_path(STYIO_DEFINE_CMAKE_MAKE_PROGRAM "${CMAKE_MAKE_PROGRAM}")
@@ -106,19 +103,19 @@ add_subdirectory(benchmark)
 
 install(
   FILES
-    "${STYIO_SOURCE_DIR}/LICENSE"
-    "${STYIO_SOURCE_DIR}/NOTICE"
-    "${STYIO_SOURCE_DIR}/README.md"
-    "${STYIO_SOURCE_DIR}/README_zh.md"
-    "${STYIO_SOURCE_DIR}/CHANGELOG.md"
-    "${STYIO_SOURCE_DIR}/RELEASE-POLICY.md"
-    "${STYIO_SOURCE_DIR}/DEPENDENCY-USAGE.md"
+    "${CMAKE_SOURCE_DIR}/LICENSE"
+    "${CMAKE_SOURCE_DIR}/NOTICE"
+    "${CMAKE_SOURCE_DIR}/README.md"
+    "${CMAKE_SOURCE_DIR}/README_zh.md"
+    "${CMAKE_SOURCE_DIR}/CHANGELOG.md"
+    "${CMAKE_SOURCE_DIR}/RELEASE-POLICY.md"
+    "${CMAKE_SOURCE_DIR}/DEPENDENCY-USAGE.md"
   DESTINATION "${CMAKE_INSTALL_DOCDIR}"
   COMPONENT Runtime
 )
 
 install(
-  DIRECTORY "${STYIO_SOURCE_DIR}/example/"
+  DIRECTORY "${CMAKE_SOURCE_DIR}/example/"
   DESTINATION "${CMAKE_INSTALL_DOCDIR}/examples"
   COMPONENT Runtime
   FILES_MATCHING
@@ -129,7 +126,7 @@ install(
 )
 
 install(
-  DIRECTORY "${STYIO_SOURCE_DIR}/library/"
+  DIRECTORY "${CMAKE_SOURCE_DIR}/library/"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/styio/library"
   COMPONENT Runtime
   FILES_MATCHING
@@ -139,8 +136,8 @@ install(
 )
 
 install(
-  DIRECTORY "${STYIO_SOURCE_DIR}/src/StyioPrelude/"
-  DESTINATION "${CMAKE_INSTALL_DATADIR}/styio/src/StyioPrelude"
+  DIRECTORY "${CMAKE_SOURCE_DIR}/share/styio/prelude/"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/styio/prelude"
   COMPONENT Runtime
   FILES_MATCHING
     PATTERN "*.styio"

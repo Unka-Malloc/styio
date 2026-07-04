@@ -82,7 +82,7 @@ styio_apply_llvm_compile_settings(styio_fuzz_ide_completion_smoke)
 
 add_executable(styio_fuzz_ide_lsp_sync
   fuzz_ide_lsp_sync.cpp
-  "${STYIO_SOURCE_DIR}/src/StyioServices/StyioLSP/Server.cpp"
+  "${CMAKE_SOURCE_DIR}/src/StyioServices/StyioLSP/Server.cpp"
 )
 target_link_libraries(styio_fuzz_ide_lsp_sync PRIVATE styio_ide_core ${LLVM_LIBS})
 styio_apply_llvm_compile_settings(styio_fuzz_ide_lsp_sync)
@@ -92,7 +92,7 @@ target_link_options(styio_fuzz_ide_lsp_sync PRIVATE ${STYIO_FUZZ_FLAGS})
 add_executable(styio_fuzz_ide_lsp_sync_smoke
   fuzz_smoke_main.cpp
   fuzz_ide_lsp_sync.cpp
-  "${STYIO_SOURCE_DIR}/src/StyioServices/StyioLSP/Server.cpp"
+  "${CMAKE_SOURCE_DIR}/src/StyioServices/StyioLSP/Server.cpp"
 )
 target_link_libraries(styio_fuzz_ide_lsp_sync_smoke PRIVATE styio_ide_core ${LLVM_LIBS})
 styio_apply_llvm_compile_settings(styio_fuzz_ide_lsp_sync_smoke)
@@ -118,7 +118,7 @@ add_test(
     $<TARGET_FILE:styio_fuzz_lexer_smoke>
     ${CMAKE_CURRENT_LIST_DIR}/corpus/lexer
     500
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 set_tests_properties(
   fuzz_lexer_smoke
@@ -133,7 +133,7 @@ add_test(
     $<TARGET_FILE:styio_fuzz_parser_smoke>
     ${CMAKE_CURRENT_LIST_DIR}/corpus/parser
     500
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 set_tests_properties(
   fuzz_parser_smoke
@@ -151,7 +151,7 @@ add_test(
     ${CMAKE_CURRENT_LIST_DIR}/corpus/ide_completion
     $<TARGET_FILE:styio_fuzz_ide_lsp_sync_smoke>
     ${CMAKE_CURRENT_LIST_DIR}/corpus/ide_lsp_sync
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 set_tests_properties(
   StyioFuzzTargets.SyntaxCompletionAndLspSyncRemainStable
@@ -162,7 +162,7 @@ set_tests_properties(
 add_test(
   NAME fuzz_regression_pack_smoke
   COMMAND bash ${CMAKE_CURRENT_LIST_DIR}/fuzz_regression_pack_smoke.sh
-  WORKING_DIRECTORY "${STYIO_SOURCE_DIR}"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
 )
 set_tests_properties(
   fuzz_regression_pack_smoke

@@ -22,35 +22,36 @@ Primary paths:
 8. `scripts/team-docs-gate.py`
 9. `scripts/docs-gate.sh`
 10. `scripts/delivery-gate.sh`
-11. `.github/workflows/project-coverage-gate.yml`
-12. `scripts/project-coverage-gate.py`
-13. `scripts/python-coverage-gate.py`
-14. `scripts/bootstrap-dev-env.sh`
-15. `scripts/bootstrap-dev-container.sh`
-16. `scripts/bootstrap-dev-env-macos.sh`
-17. `scripts/bootstrap-dev-env-windows.ps1`
-18. `scripts/bootstrap-workspace.sh`
-19. `scripts/bootstrap-workspace.ps1`
-20. `scripts/android-sdk-profile.sh`
-21. `scripts/android-sdk-profile.ps1`
-22. `scripts/apple-platform-profile.sh`
-23. `scripts/verify-android-device.sh`
-24. `scripts/verify-android-device.ps1`
-25. `scripts/verify-apple-device.sh`
-26. `docker/`
-27. `.devcontainer/`
-28. `toolchain/android-sdk-profiles.csv`
-29. `toolchain/apple-platform-profiles.csv`
-30. `prototype/README.md`
-31. `frontend/vityo_app/README.md`
-32. `scripts/check_architecture_boundaries.py`
-33. `scripts/public-contract-schema-gate.py`
-34. `docs/governance/CODEOWNERS-POLICY.md`
-35. `docs/rollups/nightly-subbranch-merge-report-20260624.md`
-36. `CONTRIBUTING.md`
-37. `SECURITY.md`
-38. `.github/pull_request_template.md`
-39. `docs/governance/`
+11. `scripts/manifest_tool.py`
+12. `.github/workflows/project-coverage-gate.yml`
+13. `scripts/project-coverage-gate.py`
+14. `scripts/python-coverage-gate.py`
+15. `scripts/bootstrap-dev-env.sh`
+16. `scripts/bootstrap-dev-container.sh`
+17. `scripts/bootstrap-dev-env-macos.sh`
+18. `scripts/bootstrap-dev-env-windows.ps1`
+19. `scripts/bootstrap-workspace.sh`
+20. `scripts/bootstrap-workspace.ps1`
+21. `scripts/android-sdk-profile.sh`
+22. `scripts/android-sdk-profile.ps1`
+23. `scripts/apple-platform-profile.sh`
+24. `scripts/verify-android-device.sh`
+25. `scripts/verify-android-device.ps1`
+26. `scripts/verify-apple-device.sh`
+27. `docker/`
+28. `.devcontainer/`
+29. `toolchain/android-sdk-profiles.csv`
+30. `toolchain/apple-platform-profiles.csv`
+31. `prototype/README.md`
+32. `frontend/vityo_app/README.md`
+33. `scripts/check_architecture_boundaries.py`
+34. `scripts/public-contract-schema-gate.py`
+35. `docs/governance/CODEOWNERS-POLICY.md`
+36. `docs/rollups/nightly-subbranch-merge-report-20260624.md`
+37. `CONTRIBUTING.md`
+38. `SECURITY.md`
+39. `.github/pull_request_template.md`
+40. `docs/governance/`
 
 Key SSOTs:
 
@@ -69,6 +70,7 @@ Key SSOTs:
 13. `架构边界门禁 -> ../../scripts/check_architecture_boundaries.py`
 14. `公共合同 schema 门禁 -> ../../scripts/public-contract-schema-gate.py`
 15. `CODEOWNERS 治理策略 -> ../../docs/governance/CODEOWNERS-POLICY.md`
+16. `已实现决策摘要 -> ../adr/IMPLEMENTED-DECISIONS.md`
 
 ## Daily Workflow
 
@@ -91,14 +93,17 @@ Key SSOTs:
 17. Keep [../specs/TECHNOLOGY-COMPONENT-INVENTORY.md](../specs/TECHNOLOGY-COMPONENT-INVENTORY.md) aligned with `styio-audit` whenever the technology stack, internal components, open-source components, dependency manifests, Apache-2.0 evidence, commercial-risk boundaries, or UI asset-source evidence changes.
 18. Maintain GitHub merge gates through Rulesets rather than legacy classic branch protection; audit effective branch rules when required status-check governance changes.
 19. External audit shard updates must name the remediated finding, the changed security boundary, and the exact validation command; if code and audit evidence move together, update the owning team runbook in the same change.
-20. The ecosystem CLI doc gate (`scripts/ecosystem-cli-doc-gate.py`) is marked non-blocking for cross-repo contract issues; sibling-repo doc failures do not block vityo-nightly PRs. Use `--skip-ecosystem` on `delivery-gate.sh` and `docs-gate.sh` to bypass in CI.
+20. The ecosystem CLI doc gate (`scripts/ecosystem-cli-doc-gate.py`) is marked non-blocking for cross-repo contract issues; sibling-repo doc failures do not block vityo-nightly PRs. Normal CI must run it for evidence, while `--skip-ecosystem` on `delivery-gate.sh` and `docs-gate.sh` is reserved for targeted recovery.
 20. Checkpoint health documentation must list every command run by `scripts/checkpoint-health.sh`; when project coverage, language fixture gate roots, shell-wrapper line-ending policy, prototype governance, or selftest routing changes, update `docs/assets/workflow/CHECKPOINT-HEALTH.md` and the affected owner runbook in the same change.
 21. Language-service ADR or contract updates must refresh both the owning contract runbook and generated docs indexes in the same worktree pass; do not rely on passing Flutter tests as evidence that docs ownership is closed.
 22. Docs tree structure, milestone files, prototype manifest entries, and fixture paths must be organized by content or functional effect. Version strings, dates, and stage numbers may appear as state metadata or external wire values, but must not define repository directories, entry files, task identities, or implementation routing.
 23. Governance docs are part of docs delivery. API compatibility, security, release checklist, CODEOWNERS policy, root contribution/security entries, and PR template changes must keep generated docs indexes current.
 24. When a new docs collection is added, update `scripts/docs-index.py` collection metadata and run `python3 scripts/docs-index.py --write` in the same change.
-25. Windows-native bootstrap changes must keep `README.md`, `docs/BUILD-AND-DEV-ENV.md`, `.github/workflows/local-ci-gate.yml`, and the PowerShell script comments aligned. The PowerShell workspace bootstrap may create Flutter plugin junctions on Windows to avoid Developer Mode or admin symlink requirements, but it must restore tracked `.metadata` and `pubspec.lock` after runner generation and dependency restore.
-26. When `vityo` is imported under `styio-all-in-one`, docs gates must normalize both standalone paths such as `frontend/...` and monorepo-prefixed paths such as `vityo/frontend/...` before matching team ownership. Keep this compatibility in `scripts/team-docs-gate.py` whenever the repository is resynchronized from `vityo-nightly`.
+25. Platform-native CI changes must keep `README.md`, `docs/BUILD-AND-DEV-ENV.md`, `.github/workflows/local-ci-gate.yml`, and bootstrap script comments aligned. The PowerShell workspace bootstrap may create Flutter plugin junctions on Windows to avoid Developer Mode or admin symlink requirements, but it must restore tracked `.metadata` and `pubspec.lock` after runner generation and dependency restore.
+26. Better Plan workflow state lives only under `docs/plan/better-plan/` and must be validated with `python3 scripts/manifest_tool.py validate docs/plan/better-plan`; owner facts still belong in design, milestone, rollup, review, audit, specs, or external handoff documents.
+27. Implemented architectural decisions belong in `docs/adr/IMPLEMENTED-DECISIONS.md` only when they match current code, tests, gates, or owner SSOTs; stale plan residue must be deleted or routed back to active gap/review docs.
+28. Repository documentation is English by default. Chinese prose is allowed only when a document's `Purpose` explicitly scopes it as Chinese localization, Chinese translation, or Chinese user-facing product/marketing copy; when touching legacy Chinese prose in non-localized owner docs, convert the touched passage to English.
+29. Workspace bootstrap scripts must not leave Flutter template files that are not tracked product tests. When runner generation, Windows LLVM discovery, or platform bootstrap behavior changes, keep bash, PowerShell, and GitHub Actions entry points aligned in the same change.
 
 ## Change Classes
 
@@ -141,5 +146,17 @@ Record:
 2026-06-25: Architecture mainstream alignment package merged — added ADR-0010, four architecture/design SSOTs, API compatibility and security/supply-chain governance docs, architecture alignment rollup, and Agent Runtime / Architecture / Extension Module team runbooks. Regenerated docs indexes and refreshed DOC-STATS.md so the new owner documents are represented in docs delivery tracking.
 
 2026-06-28: Windows native compatibility gate repair updated PowerShell bootstrap behavior, Windows validation docs, coverage-gate thresholds, and hosted `windows-latest` evidence expectations. Refresh DOC-STATS.md whenever this runbook changes.
+
+2026-06-28: Better Plan workspace added under `docs/plan/better-plan/` to index existing planning, milestone, gap, rollup, audit, and governance sources without reviving `docs/plan/` as an implementation-plan SSOT. Added `scripts/manifest_tool.py`; validate with `python3 scripts/manifest_tool.py validate docs/plan/better-plan`, then run docs index/audit gates.
+
+2026-06-28: Added `docs/adr/IMPLEMENTED-DECISIONS.md` as the current-code compressed index for implemented architecture decisions. ADR policy now keeps standalone ADRs for decisions still needing direct review, while implemented decisions must carry current implementation or verification anchors.
+
+2026-06-28: Added the English-by-default documentation rule to the documentation policy, contributor/agent spec, and docs delivery workflow. Chinese prose now requires an explicit localization, translation, or Chinese user-facing product/marketing scope.
+
+2026-06-28: Three-platform CI gates now run the delivery health floor on `ubuntu-latest`, `windows-latest`, and `macos-latest`, then prove native Linux, Windows, and macOS Flutter debug builds. Rulesets should require `audit`, `styio-audit`, `local-ci-gate`, `windows-native`, and `macos-native`.
+
+2026-06-28: Added `docs/design/Vityo-End-To-End-Mainstream-IDE-Plan.md` plus separate Linux, Windows, and macOS desktop adaptation plans. Better Plan now keeps `end-to-end-mainstream-ide-alignment` for shared module/workflow convergence and `linux-desktop-adaptation`, `windows-desktop-adaptation`, and `macos-desktop-adaptation` for host-specific evidence.
+
+2026-06-28: Split the end-to-end mainstream IDE work into granular Better Plan entries for app composition, foundation registries, shell, editor buffers, language protocols, project graph/toolchain protocols, execution/debug protocols, agent interaction, user-facing workflows, module contributions, settings/profile/theme, hosted cloud routes, search/navigation/refactor workflows, problems/testing/source-control surfaces, security/audit, and the prototype editor harness.
 
 <!-- codex merge: docs/build/scripts assets imported -->

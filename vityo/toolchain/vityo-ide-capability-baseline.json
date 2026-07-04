@@ -2,7 +2,7 @@
   "schema": 1,
   "project": "Vityo",
   "description": "Machine-verifiable IDE capability baseline. Every domain anchors to real repo paths. This file is a product engineering artifact, not a scorecard.",
-  "last_updated": "2026-06-28",
+  "last_updated": "2026-06-24",
   "benchmark_peers": [
     { "id": "vscode", "description": "VSCode — lightweight workbench, LSP, DAP, command palette, extension model" },
     { "id": "intellij-community", "description": "IntelliJ IDEA Community — deep semantic project model, inspections, safe refactoring" },
@@ -54,13 +54,11 @@
     "language_intelligence": {
       "target": "Token/semantic highlighting, diagnostics, hover, completion, formatting, go-to-definition, find-references, rename, code actions, workspace symbols — all through LanguageServiceAdapter contract with stale-result rejection and capability-gap safety.",
       "benchmarkPeers": ["vscode", "intellij-community"],
-      "currentStatus": "L3 — All-in-one syntax diagnostics route through the repo-local Styio syntax-check contract; workspace features exist with upstream-blocked status for rename/code-actions/formatting",
+      "currentStatus": "L2-L3 — Contract-backed diagnostics, stale-revision rejection, capability gap model; workspace features exist with upstream-blocked status for rename/code-actions/formatting",
       "implementationAnchors": [
         "frontend/vityo_app/lib/src/view_ide/language/language_contract.dart",
         "frontend/vityo_app/lib/src/view_ide/language/diagnostic_revision_gate.dart",
         "frontend/vityo_app/lib/src/view_ide/language/styio_syntax_highlighter.dart",
-        "frontend/vityo_app/lib/src/view_ide/language/service/styio_service_connector.dart",
-        "frontend/vityo_app/lib/src/view_ide/toolchain/styio_toolchain_discovery_io.dart",
         "frontend/vityo_app/lib/src/view_ide/workspace/workspace_problems.dart",
         "frontend/vityo_app/lib/src/view_ide/workspace/workspace_code_actions.dart",
         "frontend/vityo_app/lib/src/view_ide/workspace/workspace_rename.dart",
@@ -71,10 +69,7 @@
         "frontend/vityo_app/test/diagnostic_revision_gate_test.dart",
         "frontend/vityo_app/test/workspace_problems_test.dart",
         "frontend/vityo_app/test/styio_language_service_smoke_test.dart",
-        "frontend/vityo_app/test/styio_syntax_diagnostic_feature_test.dart",
-        "frontend/vityo_app/test/styio_cli_jsonl_protocol_arguments_test.dart",
-        "frontend/vityo_app/test/styio_service_connector_test.dart",
-        "frontend/vityo_app/test/styio_toolchain_discovery_io_test.dart"
+        "frontend/vityo_app/test/styio_syntax_diagnostic_feature_test.dart"
       ],
       "knownGaps": [
         "Rename safety blocked on upstream StyioService",
@@ -83,7 +78,7 @@
         "Hover/completion providers blocked on upstream StyioService",
         "Inlay hints not yet designed"
       ],
-      "nextMilestone": "L3+ — expand from syntax-check diagnostics to compiler-owned semantic facts, then wire code action preview/apply through workspace edit transaction"
+      "nextMilestone": "L3 — consume real StyioService diagnostics; wire code action preview/apply through workspace edit transaction"
     },
     "project_model": {
       "target": "Styio project graph as first-class product model: workspace members, packages, dependencies, targets, toolchain, lock/vendor/build state, with canonical-file vs machine-payload source marking and Agent-context serialization.",
@@ -102,10 +97,10 @@
       ],
       "knownGaps": [
         "Canonical-file vs hosted-payload source marking not per-field",
-        "Machine payload consumption waiting on spio formal contract",
+        "Machine payload consumption waiting on pafio formal contract",
         "Package target ambiguity shows generic blocked reason"
       ],
-      "nextMilestone": "L3 — per-field source marking; consume spio published project graph payload"
+      "nextMilestone": "L3 — per-field source marking; consume pafio published project graph payload"
     },
     "run_debug_runtime": {
       "target": "Runtime surface as first-class product: run target selector, minimal compilable unit run, workflow lane summaries, stdout/stderr/diagnostic event stream, runtime graph, event replay, route trace. Breakpoint/run-configuration model as preview-only until Styio backend supports them.",

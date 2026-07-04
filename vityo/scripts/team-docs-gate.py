@@ -63,7 +63,7 @@ TEAM_RULES: tuple[TeamRule, ...] = (
             "frontend/vityo_app/lib/src/backend_toolchain/",
             "frontend/vityo_app/lib/src/integration/",
             "docs/contracts/",
-            "docs/external/for-spio/",
+            "docs/external/for-pafio/",
             "docs/external/for-styio/",
         ),
     ),
@@ -157,11 +157,7 @@ def run_git(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 
 def normalize_path(path: str) -> Path:
-    normalized = Path(path.strip().strip('"'))
-    parts = normalized.parts
-    if parts and parts[0] == ROOT.name:
-        return Path(*parts[1:]) if len(parts) > 1 else Path(".")
-    return normalized
+    return Path(path.strip().strip('"'))
 
 
 def changed_from_worktree() -> List[Path]:

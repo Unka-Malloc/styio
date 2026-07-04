@@ -9,10 +9,10 @@ endif()
 if(NOT DEFINED FETCHCONTENT_SOURCE_DIR_TREE_SITTER_RUNTIME OR
    NOT EXISTS "${FETCHCONTENT_SOURCE_DIR_TREE_SITTER_RUNTIME}/lib/include")
   set(_STYIO_TREE_SITTER_SOURCE_CANDIDATES
-    "${STYIO_BINARY_DIR}/_deps/tree_sitter_runtime-src"
-    "${STYIO_SOURCE_DIR}/build/default/_deps/tree_sitter_runtime-src"
-    "${STYIO_SOURCE_DIR}/build/ide-perf/_deps/tree_sitter_runtime-src"
-    "${STYIO_SOURCE_DIR}/build/fuzz/_deps/tree_sitter_runtime-src"
+    "${CMAKE_BINARY_DIR}/_deps/tree_sitter_runtime-src"
+    "${CMAKE_SOURCE_DIR}/build/default/_deps/tree_sitter_runtime-src"
+    "${CMAKE_SOURCE_DIR}/build/ide-perf/_deps/tree_sitter_runtime-src"
+    "${CMAKE_SOURCE_DIR}/build/fuzz/_deps/tree_sitter_runtime-src"
   )
   foreach(_candidate IN LISTS _STYIO_TREE_SITTER_SOURCE_CANDIDATES)
     if(EXISTS "${_candidate}/lib/include")
@@ -23,7 +23,7 @@ if(NOT DEFINED FETCHCONTENT_SOURCE_DIR_TREE_SITTER_RUNTIME OR
   endforeach()
 endif()
 
-if(NOT EXISTS "${STYIO_SOURCE_DIR}/grammar/tree-sitter-styio/src/parser.c")
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/grammar/tree-sitter-styio/src/parser.c")
   message(FATAL_ERROR
     "Tree-sitter grammar sources are missing. Run `npx --yes tree-sitter-cli@0.26.8 generate` "
     "in grammar/tree-sitter-styio or configure with -DSTYIO_ENABLE_TREE_SITTER=OFF.")
@@ -65,13 +65,13 @@ set_target_properties(styio_tree_sitter_runtime PROPERTIES
 )
 
 set_source_files_properties(
-  "${STYIO_SOURCE_DIR}/grammar/tree-sitter-styio/src/parser.c"
+  "${CMAKE_SOURCE_DIR}/grammar/tree-sitter-styio/src/parser.c"
   PROPERTIES LANGUAGE C
 )
 add_library(styio_tree_sitter_styio STATIC
-  "${STYIO_SOURCE_DIR}/grammar/tree-sitter-styio/src/parser.c"
+  "${CMAKE_SOURCE_DIR}/grammar/tree-sitter-styio/src/parser.c"
 )
 target_include_directories(styio_tree_sitter_styio
-  PUBLIC "${STYIO_SOURCE_DIR}/grammar/tree-sitter-styio/src"
+  PUBLIC "${CMAKE_SOURCE_DIR}/grammar/tree-sitter-styio/src"
 )
 target_link_libraries(styio_tree_sitter_styio PUBLIC styio_tree_sitter_runtime)

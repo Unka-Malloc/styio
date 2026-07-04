@@ -2,37 +2,40 @@
 
 **Purpose:** Define how IDE hosts should launch and talk to `styio_lspd`, and record the currently supported request and notification surface.
 
-**Last updated:** 2026-06-28
+**Last updated:** 2026-07-04
 
 ## Transport
 
 1. Binary: `build/default/bin/styio_lspd`
 2. Protocol: LSP 3.17 over stdio
 3. Lifetime: one long-lived local daemon per workspace root
+4. Windows transport: `styio_lspd` switches stdin/stdout to binary mode before serving frames so `Content-Length: N\r\n\r\n` boundaries stay byte-exact.
 
 ## Supported Methods
 
 1. `initialize`
-2. `textDocument/didOpen`
-3. `textDocument/didChange`
-4. `textDocument/didClose`
-5. `textDocument/completion`
-6. `textDocument/hover`
-7. `textDocument/definition`
-8. `textDocument/references`
-9. `textDocument/documentSymbol`
-10. `workspace/symbol`
-11. `textDocument/semanticTokens/full`
-12. `textDocument/publishDiagnostics` notification
-13. `$/cancelRequest`
+2. `initialized` notification
+3. `textDocument/didOpen`
+4. `textDocument/didChange`
+5. `textDocument/didClose`
+6. `textDocument/completion`
+7. `textDocument/hover`
+8. `textDocument/definition`
+9. `textDocument/references`
+10. `textDocument/documentSymbol`
+11. `workspace/symbol`
+12. `textDocument/semanticTokens/full`
+13. `textDocument/publishDiagnostics` notification
+14. `$/cancelRequest`
 
 ## Startup Sequence
 
 1. Launch `styio_lspd` with the workspace root available to the client.
 2. Send `initialize` with `rootUri`.
-3. Open editor buffers via `didOpen`.
-4. Forward buffer changes via `didChange`.
-5. Query completion, hover, definition, references, symbols, and semantic tokens against the open document state.
+3. Send `initialized` as a notification after the initialize response; the server does not return a JSON-RPC response for this notification.
+4. Open editor buffers via `didOpen`.
+5. Forward buffer changes via `didChange`.
+6. Query completion, hover, definition, references, symbols, and semantic tokens against the open document state.
 
 ## Minimal Message Flow
 
@@ -64,32 +67,16 @@ Explicit imports come from top-level `@import { ... }` declarations. Source acce
 
 ## Diagnostics Semantics
 
-1. `didOpen` / `didChange` publish edit-time syntax snapshot diagnostics immediately. These diagnostics support editor interaction but do not define accepted Styio grammar.
-2. Semantic diagnostics come from the authoritative nightly parser/analyzer bridge and are queued behind a debounce boundary.
+1. `didOpen` / `didChange` publish syntax diagnostics immediately from the edit-time syntax snapshot.
+2. Semantic diagnostics come from the Nightly parser/analyzer bridge and are queued behind a debounce boundary.
 3. Debounced semantic publication replaces the earlier syntax-only list with the full merged diagnostic set for the latest visible snapshot.
 4. Stale semantic runs are dropped by snapshot/version guards instead of being published.
-5. Malformed source does not publish recovered later hover, completion, symbol, or type facts from the compiler semantic bridge.
-
-## Rename Readiness
-
-`textDocument/rename` is the next planned public-method checkpoint, but it is not part of the supported method list yet.
-
-Before exposing `rename`, the implementation must prove:
-
-1. semantic identity is compiler-owned and stable across open buffers, background indexes, and persisted warm-start entries;
-2. stale foreground, semantic, and background-index work cannot publish or apply edits for an older snapshot;
-3. workspace symbol/index facts agree with definition and references for the same identity;
-4. diagnostics publication remains semantic-first and does not hide rename blockers behind syntax-only facts; and
-5. rename fixtures cover freshness, workspace index identity, stale publication suppression, and malformed-source rejection.
-
-These readiness checks may run as parallel sub-agent lanes by identity, freshness, workspace index, diagnostics publication, and fixture coverage. The serial merge gate is capability exposure: `textDocument/rename` must not be advertised until every lane has passing evidence in the same IDE/LSP checkpoint.
-
-`codeAction` and `inlayHint` remain after `rename`; they should not be implemented first unless a later owner decision changes this public-surface order.
+5. In recovery mode, malformed statements are reported while later statements in the same file can still contribute hover, completion, and symbol data.
 
 ## Current Limits
 
 1. The server is local-only and single-workspace for now.
-2. `rename`, `codeAction`, and `inlayHint` are intentionally not implemented yet; `rename` is the next planned public-method checkpoint after the readiness items above are proven.
+2. `rename`, `codeAction`, and `inlayHint` are intentionally not implemented yet.
 3. Debounced semantic publication is request-driven in the stdio loop: `Server::run()` drains runtime diagnostics after each processed request.
 4. `workspace/didChangeWatchedFiles` schedules background reindex work; because the stdio runtime has no separate idle thread, `Server::run()` advances one background task as a request-driven fallback only after foreground responses and semantic diagnostic drains are clear. Embedders can call `IdeService::run_idle_tasks()` for the same semantic-first idle slice.
 5. Stale foreground and semantic work is guarded by snapshot/version checks and counted instead of being published after a newer visible snapshot.

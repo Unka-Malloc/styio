@@ -11,7 +11,7 @@ from typing import List, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WORKSPACE_ROOT = ROOT.parent
-REQUIRED_REPOS = ("styio-nightly", "styio-spio", "styio-view")
+REQUIRED_REPOS = ("styio-nightly", "styio-pafio", "styio-view")
 
 
 @dataclass(frozen=True)
@@ -33,17 +33,17 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="styio machine-info handshake fields and compile-plan advertisement stay aligned",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 2.1 `styio --machine-info=json`",
                     "`active_integration_phase`",
                     "`supported_adapter_modes`",
                     "`feature_flags`",
-                    "`supported_contracts.compile_plan:[resolved-request]`",
+                    "`supported_contracts.compile_plan",
                 ),
             ),
             DocRule(
-                "styio-spio/docs/external/for-styio/Styio-External-Interface-Requirement-Spec.md",
+                "styio-pafio/docs/external/for-styio/Styio-External-Interface-Requirement-Spec.md",
                 (
                     "### 2.1 `styio --machine-info=json`",
                     "`active_integration_phase`",
@@ -57,7 +57,7 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
                     "`styio --machine-info=json`",
                     "`supported_adapter_modes`",
                     "`feature_flags`",
-                    "`supported_contracts.compile_plan:[resolved-request]`",
+                    "`supported_contracts.compile_plan",
                 ),
             ),
         ),
@@ -67,16 +67,16 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="styio compile-plan consumer behavior stays aligned for spio and view",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 2.3 `styio --compile-plan <path>`",
-                    "`build/check/run/test` 都走同一条 compile-plan resolved-request 入口",
-                    "`diagnostics.jsonl`",
+                    "compile-plan resolved-request",
+                    "compile-plan",
                     "`CliError`",
                 ),
             ),
             DocRule(
-                "styio-spio/docs/external/for-styio/Styio-External-Interface-Requirement-Spec.md",
+                "styio-pafio/docs/external/for-styio/Styio-External-Interface-Requirement-Spec.md",
                 (
                     "### 2.2 `styio --compile-plan <path>`",
                     "- `check`",
@@ -88,7 +88,7 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
                 "styio-view/docs/external/for-styio/Styio-Compile-Run-Contract.md",
                 (
                     "`styio --compile-plan <path>`",
-                    "`build/check/run/test` 都走同一条 compile-plan resolved-request 入口",
+                    "published compile-plan",
                     "`diagnostics.jsonl`",
                     "`CliError`",
                 ),
@@ -100,7 +100,7 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="styio source-build metadata stays aligned for spio build",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 2.4 `styio --source-build-info=json`",
                     "`https://github.com/eBioRing/Styio.git`",
@@ -111,7 +111,7 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
                 ),
             ),
             DocRule(
-                "styio-spio/docs/governance/Spio-CLI-Contract.md",
+                "styio-pafio/docs/governance/Spio-CLI-Contract.md",
                 (
                     "`https://github.com/eBioRing/Styio.git`",
                     "`stable` and `nightly` to the same-named source branches",
@@ -127,7 +127,7 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="spio machine-info advertised contract lines stay aligned",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 3.1 `spio machine-info --json`",
                     "`supported_contracts.project_graph:[package-workspace-shape]`",
@@ -136,20 +136,20 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
                 ),
             ),
             DocRule(
-                "styio-spio/docs/governance/Spio-CLI-Contract.md",
+                "styio-pafio/docs/governance/Spio-CLI-Contract.md",
                 (
                     "spio machine-info --json",
-                    "`supported_contracts.project_graph` reports `[package-workspace-shape]`",
-                    "`supported_contracts.toolchain_state` reports `[compiler-toolchain-shape]`",
-                    "`supported_contracts.workflow_success_payloads` reports `[execution-result-shape]`",
+                    "`supported_contracts.project_graph` reports `[1]`",
+                    "`supported_contracts.toolchain_state` reports `[1]`",
+                    "`supported_contracts.workflow_success_payloads` reports `[1]`",
                 ),
             ),
             DocRule(
-                "styio-view/docs/external/for-spio/Spio-Toolchain-And-Registry-State.md",
+                "styio-view/docs/external/for-pafio/Pafio-Toolchain-And-Registry-State.md",
                 (
-                    "`spio machine-info --json`",
-                    "`spio project-graph --json`",
-                    "`spio tool status --json`",
+                    "`pafio machine-info --json`",
+                    "`pafio project-graph --json`",
+                    "`pafio tool status --json",
                 ),
             ),
         ),
@@ -159,7 +159,7 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="spio project graph payload keys stay aligned",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 3.2 `spio project-graph --manifest-path <path> --json`",
                     "`project_graph package-workspace-shape`",
@@ -169,17 +169,17 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
                 ),
             ),
             DocRule(
-                "styio-spio/docs/governance/Spio-CLI-Contract.md",
+                "styio-pafio/docs/governance/Spio-CLI-Contract.md",
                 (
-                    "`spio project-graph --json` publishes `project_graph package-workspace-shape`",
-                    "`project_graph package-workspace-shape` includes at least `packages`, `dependencies`, `targets`, `toolchain`, `managed_toolchains`, `lock_state`, `vendor_state`, `notes`, `package_distribution`, and `source_state`",
+                    "`spio project-graph --json` publishes `project_graph v1`",
+                    "`project_graph v1` includes at least `packages`, `dependencies`, `targets`, `toolchain`, `managed_toolchains`, `lock_state`, `vendor_state`, `notes`, `package_distribution`, and `source_state`",
                 ),
             ),
             DocRule(
-                "styio-view/docs/external/for-spio/Spio-Project-Graph-Contract.md",
+                "styio-view/docs/external/for-pafio/Pafio-Project-Graph-Contract.md",
                 (
-                    "`spio project-graph --manifest-path <path> --json`",
-                    "`project_graph package-workspace-shape`",
+                    "pafio project-graph --manifest-path <path> --json",
+                    "`project_graph` published family",
                     "`managed_toolchains`",
                     "`package_distribution`",
                     "`source_state`",
@@ -192,7 +192,7 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="spio toolchain state payload stays aligned",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 3.3 `spio tool status --manifest-path <path> --json`",
                     "`toolchain_state compiler-toolchain-shape`",
@@ -202,19 +202,19 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
                 ),
             ),
             DocRule(
-                "styio-spio/docs/governance/Spio-CLI-Contract.md",
+                "styio-pafio/docs/governance/Spio-CLI-Contract.md",
                 (
-                    "`spio tool status --json` publishes `toolchain_state compiler-toolchain-shape`",
+                    "`spio tool status --json` publishes `toolchain_state v1`",
                     "`project_pin`",
                     "`current_compiler`",
                     "`managed_toolchains`",
                 ),
             ),
             DocRule(
-                "styio-view/docs/external/for-spio/Spio-Toolchain-And-Registry-State.md",
+                "styio-view/docs/external/for-pafio/Pafio-Toolchain-And-Registry-State.md",
                 (
-                    "`spio tool status --json`",
-                    "`toolchain_state compiler-toolchain-shape`",
+                    "`pafio tool status --json",
+                    "`toolchain_state` published family",
                     "`project_pin`",
                     "`current_compiler`",
                     "`managed_toolchains`",
@@ -227,29 +227,29 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="spio build/run/test success payloads stay aligned",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 3.4 `spio --json build/run/test`",
-                    "`workflow_success_payloads execution-result-shape`",
+                    "`workflow_success_payloads",
                     "`receipt_path`",
                     "`diagnostics_path`",
                     "`stdout / stderr`",
                 ),
             ),
             DocRule(
-                "styio-spio/docs/governance/Spio-CLI-Contract.md",
+                "styio-pafio/docs/governance/Spio-CLI-Contract.md",
                 (
-                    "`workflow_success_payloads execution-result-shape`",
+                    "`workflow_success_payloads",
                     "`receipt.json`",
                     "`diagnostics.jsonl` path",
                     "captured stdout/stderr",
                 ),
             ),
             DocRule(
-                "styio-view/docs/external/for-spio/Spio-Workflow-Success-Payloads.md",
+                "styio-view/docs/external/for-pafio/Pafio-Workflow-Success-Payloads.md",
                 (
-                    "spio --json build --manifest-path <path> ...",
-                    "`workflow_success_payloads execution-result-shape`",
+                    "pafio --json build --manifest-path <path> ...",
+                    "`workflow_success_payloads",
                     "`receipt_path`",
                     "`diagnostics_path`",
                     "captured `stdout`",
@@ -263,15 +263,15 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
         summary="supporting spio JSON success commands stay aligned for source/deploy/toolchain flows",
         docs=(
             DocRule(
-                "styio-nightly/docs/plans/Styio-Ecosystem-CLI-Contract-Matrix.md",
+                "styio-nightly/docs/plan/Styio-Ecosystem-CLI-Contract-Matrix.md",
                 (
                     "### 3.5 `spio --json fetch/vendor/pack/publish`",
                     "### 3.6 `spio --json tool install/use/pin`",
-                    "supporting commands 成功时也必须写稳定 JSON object",
+                    "JSON object",
                 ),
             ),
             DocRule(
-                "styio-spio/docs/governance/Spio-CLI-Contract.md",
+                "styio-pafio/docs/governance/Spio-CLI-Contract.md",
                 (
                     "spio --json fetch --manifest-path path/to/spio.toml ...",
                     "spio --json tool install --styio-bin /path/to/styio",
@@ -280,19 +280,19 @@ CONTRACT_RULES: tuple[ContractRule, ...] = (
                 ),
             ),
             DocRule(
-                "styio-view/docs/external/for-spio/Spio-Workflow-Success-Payloads.md",
+                "styio-view/docs/external/for-pafio/Pafio-Workflow-Success-Payloads.md",
                 (
-                    "spio --json fetch --manifest-path <path> ...",
-                    "spio --json tool install --styio-bin <path>",
-                    "成功时仍必须：",
+                    "pafio --json fetch --manifest-path <path> ...",
+                    "pafio --json tool install --styio-bin <path>",
+                    "JSON object",
                 ),
             ),
             DocRule(
-                "styio-view/docs/external/for-spio/Spio-Toolchain-And-Registry-State.md",
+                "styio-view/docs/external/for-pafio/Pafio-Toolchain-And-Registry-State.md",
                 (
-                    "`spio --json fetch --manifest-path <path>`",
-                    "`spio --json pack --manifest-path <path>`",
-                    "`spio --json tool install --styio-bin <path>`",
+                    "`pafio --json fetch --manifest-path <path>`",
+                    "`pafio --json pack --manifest-path <path>`",
+                    "`pafio --json tool install --styio-bin <path>`",
                 ),
             ),
         ),
@@ -306,7 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--workspace-root",
         type=Path,
         default=DEFAULT_WORKSPACE_ROOT,
-        help="workspace root that should contain styio-nightly, styio-spio, and styio-view",
+        help="workspace root that should contain styio-nightly, styio-pafio, and styio-view",
     )
     parser.add_argument(
         "--require-workspace",

@@ -2,14 +2,13 @@
 
 **Purpose:** Compress implemented architecture and workflow decisions that no longer need one file per decision in the current tree; exact previous ADR wording is available from Git history when needed.
 
-**Last updated:** 2026-06-28
+**Last updated:** 2026-07-04
 
 ## Reading Contract
 
 1. This file is provenance, not an active planning queue.
 2. Active rules live in the owning design, spec, workflow, team, test, or rollup document.
 3. Add a new ADR file only while a decision still needs direct review as a decision record; after implementation and SSOT absorption, compress it here or remove it.
-4. Update an existing ADR or owning SSOT before creating a new ADR; the current tree should not accumulate one ADR per small implementation change.
 
 ## Compressed Decision Groups
 
@@ -22,6 +21,6 @@
 | Five-layer pipeline | Lexer, IR, LLVM, runtime, and full-pipeline goldens are expected for accepted cross-layer behavior, including streams, file resources, stdin/stdout/stderr, and match-bind lowering. | [five-layer pipeline](../../workflows/FIVE-LAYER-PIPELINE.md), [test catalog](../../workflows/TEST-CATALOG.md) |
 | Standard streams | `@stdin`, `@stdout`, and `@stderr` are canonical resource forms; stream reads and writes stay covered by accepted syntax, tests, and design references. | [active syntax](../design/syntax/ACTIVE-SYNTAX.md), [EBNF](../design/Styio-EBNF.md), [resource identifiers](../design/syntax/RESOURCE_IDENTIFIERS.md) |
 | Resource topology | Resource topology uses compact source syntax backed by compiler-owned resource metadata, move/consume tracking, committed snapshot reads, `@()` as the destroy sink, and resource-method rules in the active topology design. | [resource topology](../design/Styio-Resource-Topology.md), [active syntax](../design/syntax/ACTIVE-SYNTAX.md), [next-stage ledger](../rollups/NEXT-STAGE-GAP-LEDGER.md) |
-| IDE and LSP | IDE work uses stable identity, semantic database/query caches, incremental edits, workspace index discipline, LSP capability boundaries, and explicit latency/perf gates. | [IDE external docs](../external/for-ide/INDEX.md), [IDE/LSP runbook](../teams/IDE-LSP-RUNBOOK.md), [perf runbook](../teams/PERF-STABILITY-RUNBOOK.md) |
+| IDE and LSP | IDE work uses stable identity, semantic database/query caches, incremental edits, workspace index discipline, LSP capability boundaries, byte-exact stdio framing, and explicit latency/perf gates. | [IDE external docs](../external/for-ide/INDEX.md), [IDE/LSP runbook](../teams/IDE-LSP-RUNBOOK.md), [perf runbook](../teams/PERF-STABILITY-RUNBOOK.md) |
 | Native extern and JIT | Native extern/JIT interop uses explicit compiler/runtime contracts and tests instead of undocumented host calls. | [agent spec](../specs/AGENT-SPEC.md), [codegen/runtime runbook](../teams/CODEGEN-RUNTIME-RUNBOOK.md) |
-| Package handoff | `styio` owns compiler-side nano and compile-plan producer contracts; package-manager UX and registry lifecycle stay outside this repository. | [repository map](../specs/REPOSITORY-MAP.md), [Spio handoff](../external/for-spio/Styio-Nano-Spio-Coordination.md), [CLI contract matrix](../plans/Styio-Ecosystem-CLI-Contract-Matrix.md) |
+| Package handoff | `styio` owns compiler-side nano and compile-plan producer contracts; package-manager UX and registry lifecycle stay outside this repository. | [repository map](../specs/REPOSITORY-MAP.md), [Pafio handoff](../external/for-pafio/Styio-Nano-Pafio-Coordination.md), [CLI contract matrix](../plan/Styio-Ecosystem-CLI-Contract-Matrix.md) |

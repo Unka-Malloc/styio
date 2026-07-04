@@ -320,7 +320,7 @@ emit_cli_error(const std::string& message, const std::string& file = "") {
 void
 print_help() {
   std::cout
-    << "Usage: styio check --syntax --json --file <path> [--config <path>] [--parser-engine nightly]\n"
+    << "Usage: styio check --syntax --json --file <path> [--parser-engine nightly]\n"
     << "\n"
     << "Runs lexing, authoritative nightly parsing, and AST construction only. It does not type-check,\n"
     << "lower, codegen, execute, or access runtime resources.\n";
@@ -349,9 +349,6 @@ run_syntax_check_cli(int argc, char* argv[]) {
       json = true;
       continue;
     }
-    if (arg == "--styio-ast") {
-      continue;
-    }
     if (arg == "--file" || arg == "-f") {
       if (i + 1 >= argc || argv[i + 1] == nullptr) {
         return emit_cli_error("--file requires a path");
@@ -361,16 +358,6 @@ run_syntax_check_cli(int argc, char* argv[]) {
     }
     if (arg.rfind("--file=", 0) == 0) {
       file = arg.substr(std::string("--file=").size());
-      continue;
-    }
-    if (arg == "--config") {
-      if (i + 1 >= argc || argv[i + 1] == nullptr) {
-        return emit_cli_error("--config requires a path", file);
-      }
-      ++i;
-      continue;
-    }
-    if (arg.rfind("--config=", 0) == 0) {
       continue;
     }
     if (arg == "--parser-engine") {

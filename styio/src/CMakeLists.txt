@@ -34,7 +34,7 @@ target_link_libraries(styio_ide_core PUBLIC styio_frontend_core styio_symbol_cor
 if(STYIO_ENABLE_TREE_SITTER)
   target_include_directories(styio_ide_core PRIVATE
     "${tree_sitter_runtime_SOURCE_DIR}/lib/include"
-    "${STYIO_SOURCE_DIR}/grammar/tree-sitter-styio/src"
+    "${CMAKE_SOURCE_DIR}/grammar/tree-sitter-styio/src"
   )
   target_compile_definitions(styio_ide_core PRIVATE STYIO_HAS_TREE_SITTER)
   target_link_libraries(styio_ide_core PUBLIC

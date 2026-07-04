@@ -63,44 +63,6 @@ void main() {
     expect(response.diagnostics.first.range.end, 5);
   });
 
-  test('JSONL protocol decodes Styio syntax-check envelope', () {
-    const protocol = StyioCliJsonlProtocol();
-    const document = StyioServiceDocument(
-      documentId: 'fixture://syntax-check',
-      text: 'value =\n',
-      revision: 4,
-      filePath: '/workspace/main.styio',
-    );
-
-    final response = protocol.decode(
-      document: document,
-      stdout:
-          '{"schema_version":1,"contract":"syntax-check","tool":"styio",'
-          '"compiler_version":"0.0.1","channel":"all-in-one",'
-          '"grammar_version":"2026","file":"/workspace/main.styio",'
-          '"status":"syntax_error","ok":false,"phase":"parse",'
-          '"parser_engine":"nightly","diagnostics":[{'
-          '"phase":"parse","code":"STYIO_PARSE_EXPECTED_EXPR",'
-          '"severity":"error","message":"expected expression",'
-          '"line":1,"column":8,"offset":7,"length":1,'
-          '"source_context":{"line_text":"value =",'
-          '"range_start_column":8,"range_end_column":9,"caret":"       ^"},'
-          '"notes":[]}]}\n',
-      stderr: '',
-      exitCode: 3,
-      toolchainSucceeded: false,
-    );
-
-    expect(response.status, StyioServiceStatus.succeeded);
-    expect(response.protocolVersion, 'syntax-check');
-    expect(response.parserEngine, 'nightly');
-    expect(response.grammarVersion, '2026');
-    expect(response.diagnostics, hasLength(1));
-    expect(response.diagnostics.single.code, 'STYIO_PARSE_EXPECTED_EXPR');
-    expect(response.diagnostics.single.range.start, 7);
-    expect(response.diagnostics.single.range.end, 8);
-  });
-
   test('JSONL protocol includes project config when provided', () {
     const protocol = StyioCliJsonlProtocol();
     const document = StyioServiceDocument(
@@ -522,7 +484,10 @@ void main() {
                 'symbol': <String, Object?>{
                   'name': 'snapshotValue',
                   'kind': 'task',
-                  'span': <String, Object?>{'startOffset': 0, 'endOffset': 5},
+                  'span': <String, Object?>{
+                    'startOffset': 0,
+                    'endOffset': 5,
+                  },
                 },
               },
             ],
@@ -1882,15 +1847,18 @@ void main() {
           StyioServiceCapability.hover,
         ],
       );
-      expect(fallback.stateOf(StyioServiceCapability.hover), switch (status) {
-        StyioServiceStatus.unavailable =>
-          StyioServiceCapabilityState.unavailable,
-        StyioServiceStatus.failed => StyioServiceCapabilityState.failed,
-        StyioServiceStatus.protocolError =>
-          StyioServiceCapabilityState.protocolError,
-        StyioServiceStatus.succeeded => StyioServiceCapabilityState.empty,
-        StyioServiceStatus.stale => StyioServiceCapabilityState.stale,
-      });
+      expect(
+        fallback.stateOf(StyioServiceCapability.hover),
+        switch (status) {
+          StyioServiceStatus.unavailable =>
+            StyioServiceCapabilityState.unavailable,
+          StyioServiceStatus.failed => StyioServiceCapabilityState.failed,
+          StyioServiceStatus.protocolError =>
+            StyioServiceCapabilityState.protocolError,
+          StyioServiceStatus.succeeded => StyioServiceCapabilityState.empty,
+          StyioServiceStatus.stale => StyioServiceCapabilityState.stale,
+        },
+      );
     }
   });
 
@@ -5462,35 +5430,31 @@ void main() {
     );
   });
 
-  test(
-    'toolchain connector exposes health preflight',
-    () async {
-      final catalog = ToolchainCatalog()
-        ..register(
-          const ToolchainDescriptor(
-            id: 'printf-styio',
-            kind: ToolchainKind.languageService,
-            displayName: 'printf Styio',
-            executablePath: '/usr/bin/printf',
-            metadata: <String, Object?>{'contract': 'styio-cli-jsonl-v1'},
-          ),
-          activate: true,
-        );
-      final runtime = ToolchainRuntime(
-        catalog: catalog,
-        processManager: LocalProcessManager.linuxDebianArmForTest(),
+  test('toolchain connector exposes health preflight', () async {
+    final catalog = ToolchainCatalog()
+      ..register(
+        const ToolchainDescriptor(
+          id: 'printf-styio',
+          kind: ToolchainKind.languageService,
+          displayName: 'printf Styio',
+          executablePath: '/usr/bin/printf',
+          metadata: <String, Object?>{'contract': 'styio-cli-jsonl-v1'},
+        ),
+        activate: true,
       );
-      final connector = ToolchainStyioServiceConnector(runtime: runtime);
+    final runtime = ToolchainRuntime(
+      catalog: catalog,
+      processManager: LocalProcessManager.linuxDebianArmForTest(),
+    );
+    final connector = ToolchainStyioServiceConnector(runtime: runtime);
 
-      final report = await connector.checkHealth(
-        probeArguments: const <String>['styio-health'],
-      );
+    final report = await connector.checkHealth(
+      probeArguments: const <String>['styio-health'],
+    );
 
-      expect(report.healthy, isTrue);
-      expect(report.processResult?.stdout, 'styio-health');
-    },
-    skip: Platform.isWindows ? 'POSIX process fixture.' : false,
-  );
+    expect(report.healthy, isTrue);
+    expect(report.processResult?.stdout, 'styio-health');
+  }, skip: Platform.isWindows ? 'POSIX process fixture.' : false);
 
   test(
     'toolchain connector runs real Styio CLI when available',
