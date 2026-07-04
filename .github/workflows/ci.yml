@@ -193,14 +193,14 @@ jobs:
         shell: pwsh
         run: >
           cmake --build build/windows --target
-          styio styio_lspd styio_syntax_check_internal_test
+          styio styio_lspd styio_test
 
       - name: Syntax-check contract tests
         shell: pwsh
         run: >
-          ctest --test-dir build/windows
-          -R "StyioSyntaxCheckInternal"
-          --output-on-failure
+          .\build\windows\bin\styio_test.exe
+          --gtest_filter=StyioDiagnostics.SyntaxCheckRejectsNonAuthoritativeParserEngine
+          --gtest_brief=1
 
   styio-macos-native:
     runs-on: macos-latest
@@ -278,11 +278,11 @@ jobs:
         shell: bash
         run: >
           cmake --build build/macos --target
-          styio styio_lspd styio_syntax_check_internal_test
+          styio styio_lspd styio_test
 
       - name: Syntax-check contract tests
         shell: bash
         run: >
-          ctest --test-dir build/macos
-          -R "StyioSyntaxCheckInternal"
-          --output-on-failure
+          ./build/macos/bin/styio_test
+          --gtest_filter=StyioDiagnostics.SyntaxCheckRejectsNonAuthoritativeParserEngine
+          --gtest_brief=1
