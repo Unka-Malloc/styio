@@ -60,11 +60,12 @@ styio-calc> quit
 
 | Repository | Role |
 | --- | --- |
-| [styio-spio](https://github.com/eBioRing/styio-spio) | 包管理器 |
+| [pafio-nightly](https://github.com/Unka-Malloc/pafio-nightly) | 包管理与项目构建入口 |
+| [styio-platform](https://github.com/Unka-Malloc/styio-cloud-nightly) | Registry、托管工作区与云执行 |
+| [vityo-nightly](https://github.com/Unka-Malloc/vityo-nightly) | Vityo IDE 与运行视窗 |
 | [styio-dev-doc](https://github.com/eBioRing/styio-dev-doc) | 开发者文档 |
 | [styio-dev-env](https://github.com/eBioRing/styio-dev-env) | 标准开发环境 |
 | [styio-book](https://github.com/eBioRing/styio-book) | 产品白皮书 |
-| [styio-view](https://github.com/eBioRing/styio-view) | 可视化页面 |
 | [styio-examples](https://github.com/eBioRing/styio-examples) | 示例工程集合 |
 | [styio-ext-vsc](https://github.com/eBioRing/styio-ext-vsc) | VS Code 插件 |
 

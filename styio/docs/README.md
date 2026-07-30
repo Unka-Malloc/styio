@@ -10,7 +10,7 @@
 2. Contributor, agent, repository-boundary, dependency, and documentation rules live in `docs/specs/`.
 3. Review findings and open conflicts live in `docs/review/`.
 4. Plans and migration drafts live in `docs/plans/`.
-5. Cross-repository handoff notes intended for `styio-spio` live in `docs/for_spio/`.
+5. The compiler handoff consumed by Pafio lives in `docs/for_pafio/`.
 6. IDE integration, embedding, and LSP usage material lives in `docs/for-ide/`.
 7. Reusable workflows and templates live in `docs/assets/`.
 8. Compressed active summaries live in `docs/rollups/`.

@@ -23,7 +23,7 @@ COLLECTION_DIRS = [
     DOCS / "review",
     DOCS / "plans",
     DOCS / "for-ide",
-    DOCS / "for_spio",
+    DOCS / "for_pafio",
     DOCS / "assets",
     DOCS / "assets" / "workflow",
     DOCS / "assets" / "templates",

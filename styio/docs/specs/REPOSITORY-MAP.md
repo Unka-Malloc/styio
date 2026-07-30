@@ -2,7 +2,7 @@
 
 **Purpose:** 记录 Styio 官方仓库生态、各仓库的预期职责边界、以及文档应当落在哪个仓库；本文件用于说明“谁负责什么”，**不**负责追踪实时开发进度、版本发布状态或逐仓库完成度。
 
-**Last updated:** 2026-04-10
+**Last updated:** 2026-07-30
 
 ---
 
@@ -21,21 +21,22 @@
 - [`../design/Styio-EBNF.md`](../design/Styio-EBNF.md)
 - [`./DOCUMENTATION-POLICY.md`](./DOCUMENTATION-POLICY.md)
 
-如果你关心的是这些配件仓库应该先补什么、按什么顺序启动，请看：
-
-- [`../plans/Styio-Ecosystem-Bootstrap-Plan.md`](../plans/Styio-Ecosystem-Bootstrap-Plan.md)
+Pafio 与 Styio 的编译器交接边界见
+[`../for_pafio/Pafio-Compiler-Handoff.md`](../for_pafio/Pafio-Compiler-Handoff.md)。
 
 ---
 
 ## 2. 总体说明
 
-Styio 当前采用“主仓库 + 配件仓库”的生态结构：
+Styio 当前采用按产品所有者切分的生态结构：
 
-- `styio` 是主仓库，承载语言、编译器、CLI、测试与主文档。
-- 其余仓库是围绕包管理、开发环境、产品文档、示例、编辑器扩展和可视化等方向展开的配件仓库。
-- 除非某个配件仓库已明确建立并持续维护自己的权威边界，否则默认仍以 `styio` 主仓库中的设计与规格文档为准。
+- Styio 承载语言、编译器、diagnostics、receipt 与 runtime events。
+- Pafio 承载 manifest、lock、resolution、包生命周期与本地项目工作流。
+- Styio Platform 承载 registry 服务、托管工作区、云任务与 worker。
+- Vityo 只通过这些所有者发布的机器合同组合本地和托管体验。
 
-当前项目共识是：**除主仓库外，绝大多数配件仓库仍应被视为“待建设”或“信息可能滞后”的状态。** 因此，本文件优先解决“仓库角色识别”和“文档归属”，而不是给出实时状态看板。
+开发环境、产品文档、示例和编辑器扩展由各自仓库维护；本文件只记录
+职责边界，不维护实时状态看板。
 
 ---
 
@@ -43,12 +44,13 @@ Styio 当前采用“主仓库 + 配件仓库”的生态结构：
 
 | Repository | Role | Owns What | Does Not Own |
 |------------|------|-----------|--------------|
-| [`styio`](../../README.md) | 主语言与编译器仓库 | 语言设计、形式文法、编译器实现、CLI、测试、主文档入口 | 包管理器、编辑器插件、产品白皮书、示例工程生态 |
-| [`styio-spio`](https://github.com/eBioRing/styio-spio) | 包管理器 | 包格式、包解析/安装/发布、依赖解析、仓库源协议 | Styio 核心语言语义与编译器实现 |
+| [`styio`](../../README.md) | 语言与编译器 | 语言设计、编译器实现、compile-plan 消费、diagnostics、receipt、runtime events | 项目依赖解析、registry 服务、托管工作区 |
+| [`pafio-nightly`](https://github.com/Unka-Malloc/pafio-nightly) | 包管理与项目构建入口 | manifest、lock、resolution、metadata、项目工作流、vendor、pack、publish 客户端 | 编译器安装/切换/缓存、编译器诊断、registry 服务端 |
+| [`styio-platform`](https://github.com/Unka-Malloc/styio-cloud-nightly) | Registry 与托管执行平台 | registry/control-plane、托管工作区、云任务、worker | Pafio 客户端业务逻辑、Styio 编译器实现 |
 | [`styio-dev-doc`](https://github.com/eBioRing/styio-dev-doc) | 开发者文档仓库 | 跨仓库开发手册、搭建流程、协作说明、外部开发者上手指南 | 语言权威语义、编译器测试验收、产品白皮书 |
 | [`styio-dev-env`](https://github.com/eBioRing/styio-dev-env) | 标准开发环境 | devcontainer、toolchain bootstrap、统一环境脚本、CI/本地环境约定 | 语言设计、产品定义、示例工程内容 |
 | [`styio-book`](https://github.com/eBioRing/styio-book) | 产品白皮书 | 产品愿景、定位、理念叙事、对外说明材料 | 编译器行为细节、测试接受标准、工程实现规范 |
-| [`vityo-nightly`](https://github.com/Unka-Malloc/vityo-nightly) | Vityo IDE 与运行视窗 | 编辑器壳层、运行视窗、可视化控制台、面向人的工作区与交互 | 编译器主实现、语言 SSOT、包管理规则 |
+| [`vityo-nightly`](https://github.com/Unka-Malloc/vityo-nightly) | Vityo IDE 与运行视窗 | 编辑器壳层、Pafio metadata/workflow 消费、Styio 语言服务消费、Platform hosted API 消费 | 编译器主实现、包管理规则、托管服务状态 |
 | [`styio-examples`](https://github.com/eBioRing/styio-examples) | 示例工程集合 | 可运行样例、模板项目、最佳实践示例 | 语言规范正文、编译器验收标准 |
 | [`styio-ext-vsc`](https://github.com/eBioRing/styio-ext-vsc) | VS Code 插件 | 语法高亮、片段、编辑器交互、未来可能的语言服务集成 | 语言语义权威定义、编译器主行为 |
 
@@ -66,7 +68,8 @@ Styio 当前采用“主仓库 + 配件仓库”的生态结构：
 
 ### 4.2 应该放到配件仓库自身的内容
 
-- 包管理器命令、配置格式、包源协议与解析策略。
+- Pafio 命令、manifest/lock、resolution、包生命周期与 registry 客户端策略。
+- Styio Platform 的 registry/control-plane 与 hosted workspace 服务合同。
 - 标准开发环境的镜像、依赖安装脚本、环境 bootstrap。
 - VS Code 插件的命令、设置项、快捷键、发布说明。
 - 可视化页面的前端交互、部署方式、页面信息架构。

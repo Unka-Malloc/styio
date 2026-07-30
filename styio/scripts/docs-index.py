@@ -23,7 +23,7 @@ COLLECTION_DIRS = [
     Path("docs/review"),
     Path("docs/plans"),
     Path("docs/for-ide"),
-    Path("docs/for_spio"),
+    Path("docs/for_pafio"),
     Path("docs/assets"),
     Path("docs/assets/workflow"),
     Path("docs/assets/templates"),
@@ -43,7 +43,7 @@ INDEX_META = {
     "docs/review": ("Review Index", "Provide the generated inventory for `docs/review/`; document boundaries and naming rules live in [README.md](./README.md)."),
     "docs/plans": ("Plans Index", "Provide the generated inventory for `docs/plans/`; document boundaries and naming rules live in [README.md](./README.md)."),
     "docs/for-ide": ("For IDE Index", "Provide the generated inventory for `docs/for-ide/`; IDE embedding, LSP usage, and edit-time parser guidance live in [README.md](./README.md)."),
-    "docs/for_spio": ("For Spio Index", "Provide the generated inventory for `docs/for_spio/`; handoff boundaries and coordination rules for `styio-spio` live in [README.md](./README.md)."),
+    "docs/for_pafio": ("For Pafio Index", "Provide the generated inventory for `docs/for_pafio/`; the Styio-owned compiler handoff consumed by Pafio lives in [README.md](./README.md)."),
     "docs/assets": ("Assets Index", "Provide the generated inventory for `docs/assets/`; asset boundaries and reuse rules live in [README.md](./README.md)."),
     "docs/assets/workflow": ("Workflow Assets Index", "Provide the generated inventory for `docs/assets/workflow/`; workflow boundaries and reuse rules live in [README.md](./README.md)."),
     "docs/assets/templates": ("Template Assets Index", "Provide the generated inventory for `docs/assets/templates/`; template boundaries and reuse rules live in [README.md](./README.md)."),
@@ -177,7 +177,11 @@ def render_index(base: Path) -> str:
     entries = build_entries(base)
     dir_entries = [e for e in entries if e.is_dir]
     file_entries = [e for e in entries if not e.is_dir]
-    updated = max((e.last_updated for e in entries), default=TODAY)
+    existing_index = base / "INDEX.md"
+    readme = base / "README.md"
+    empty_source = existing_index if existing_index.exists() else readme
+    empty_updated = extract_last_updated(empty_source) if empty_source.exists() else TODAY
+    updated = max((e.last_updated for e in entries), default=empty_updated)
 
     lines = [
         f"# {title}",
